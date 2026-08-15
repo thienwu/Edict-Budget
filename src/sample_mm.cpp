@@ -297,36 +297,36 @@ static uint32_t* g_max_edicts = NULL;
 static uint32_t* g_edicts     = NULL;
 static uint32_t* g_edict_states = NULL;
 
-// Two separate questions, and conflating them was a real bug:
-//   g_BigArrayOn    - did SV_AllocateEdicts get widened to 4096?
-//   g_EngineArray4096 - is it safe to actually PUT anything above 2047?
+// HAI CAU HOI KHAC NHAU, va gop chung lam mot da tung la loi that:
+//   g_BigArrayOn      - SV_AllocateEdicts da duoc noi rong len 4096 chua?
+//   g_EngineArray4096 - co AN TOAN de DAT thu gi o tren 2047 khong?
 //
-// The second needs the snapshot tables moved as well. The first, on its own,
-// obliges us to pin sv.max_edicts back to 2048 every level: a 4096 array with
-// max_edicts left at 4096 makes ED_Alloc append ordinary networked entities at
-// index 2048+, which no client can address (the protocol carries 11 bits), so
-// they exist and respond but never get a model. Gating the pin on the combined
-// flag meant the widened array shipped without its safety belt.
+// Cau thu hai con doi bang snapshot phai duoc doi cho nua. Cau thu nhat, tu no,
+// bat buoc ta phai ghim sv.max_edicts ve 2048 moi lan nap map: mang 4096 ma de
+// max_edicts o 4096 thi ED_Alloc se noi them entity CO MANG binh thuong vao chi
+// so 2048+, ma khong client nao dia chi hoa duoc (giao thuc chi mang 11 bit),
+// nen chung ton tai va phan hoi nhung khong bao gio co model.
+// Dieu kien ghim ma dat theo co GOP thi mang noi rong xuat xuong ma thieu day an toan.
 static bool g_BigArrayOn      = false;
 static bool g_EngineArray4096 = false;
 
-// One-shot latches for the per-frame watchdog (see Hook_GameFrame).
+// Chot mot lan cho bo canh moi frame (xem Hook_GameFrame).
 static bool g_WarnedNum = false;
 static bool g_WarnedMax = false;
 static bool g_WarnedGlob = false;
-static bool g_ExtReady        = false;  // is the extension range usable now?
-static int  g_Cursor          = EXT_LIMIT - 1;  // allocate downward, see Hook_CreateEdict
+static bool g_ExtReady        = false;  // dai mo rong da dung duoc chua?
+static int  g_Cursor          = EXT_LIMIT - 1;  // cap phat DI XUONG, xem Hook_CreateEdict
 static int  g_Stage           = 1;
 
 uint8_t* FindPattern(const char* module, const char* pattern, const char* mask);
 
-// Defined further down, next to the SourceMod list watchdog they belong to.
+// Dinh nghia o duoi, canh bo canh danh sach SourceMod ma chung thuoc ve.
 static uint32_t* g_SMListHead;
 static void ResolveSMListHead();
 edict_t* Hook_CreateEdict_Post(int forceIndex);   // dinh nghia o cuoi file
 
 // ==========================================================================
-// Small helpers
+// Ham phu nho
 // ==========================================================================
 static void WriteProtected(void* dst, const void* src, size_t len) {
     DWORD old;
@@ -335,8 +335,8 @@ static void WriteProtected(void* dst, const void* src, size_t len) {
     VirtualProtect(dst, len, old, &old);
 }
 
-// Try both working directories: srcds.exe runs from the server ROOT, but a
-// listen server / different launcher may sit in left4dead2\.
+// Thu ca hai thu muc lam viec: srcds.exe chay tu THU MUC GOC cua may chu, con
+// listen server hoac trinh khoi chay khac co the dang o trong left4dead2\.
 static FILE* OpenPluginFile(const char* name, const char* mode) {
     char path[MAX_PATH];
     _snprintf(path, sizeof(path), "left4dead2\\addons\\edictbudget\\%s", name);
@@ -405,15 +405,16 @@ static void EL_LOG_CLOSE() {
 }
 
 // ==========================================================================
-// Per-patch switches, read from patches.txt at load time
+// Cong tac cho tung ban va, doc tu patches.txt luc nap
 // ==========================================================================
 //
-// Five independent byte patches go into the engine, and a fault caused by any
-// one of them looks identical from the outside. Rebuilding to bisect them
-// costs a full stop/copy/restart cycle each time, so each patch gets a switch
-// instead: write "name=0" in patches.txt and restart.
+// Nam ban va byte doc lap di vao engine, va loi do BAT KY cai nao trong so do
+// gay ra deu trong GIONG HET NHAU tu ben ngoai. Build lai de chia doi tim thu
+// pham thi moi lan mat tron mot vong tat/chep/khoi dong lai, nen thay vao do
+// moi ban va co mot cong tac rieng: ghi "ten=0" vao patches.txt roi khoi dong lai.
 //
-// Missing file or missing key means enabled, so the normal case needs no file.
+// Thieu file hoac thieu khoa deu coi la BAT, nen truong hop binh thuong khong
+// can file nao ca.
 
 static bool g_PatchFreetime    = true;
 static bool g_PatchIndexBounds = true;
@@ -421,31 +422,31 @@ static bool g_PatchForcedIndex = true;
 static bool g_PatchBigArray    = true;
 static bool g_PatchSnapshot    = true;
 
-// The 7-byte inline JMP over server.dll's CreateEntityByName, plus a
-// hand-rolled trampoline. It exists only to learn the classname for the
-// allow-list and the census - with segregation off it is pure overhead.
-// It had no switch, so it was silently active in EVERY bisect run today and
-// was never once ruled out. The original 233-line plugin does no such detour
-// and boots rock solid, which is what put it under suspicion.
+// JMP noi tuyen 7 byte de nhay qua CreateEntityByName cua server.dll, cong mot
+// trampoline tu viet. No CHI ton tai de biet classname phuc vu danh sach cho
+// phep va ban kiem ke - khi tat phan phan tach thi no la chi phi thuan tuy.
+// No KHONG co cong tac, nen da am tham hoat dong trong MOI lan chia doi tim loi
+// va chua bao gio bi loai tru mot lan nao. Plugin goc 233 dong khong he detour
+// kieu nay ma khoi dong rat vung - chinh dieu do dua no vao dien tinh nghi.
 static bool g_PatchDetour      = true;
 
-// Ask the engine to drop the one-second cooldown before a freed edict may be
-// handed out again.
+// Yeu cau engine BO thoi gian cho 1 giay truoc khi mot edict vua giai phong
+// duoc cap phat lai.
 //
-// ED_Alloc refuses to reuse an edict until 1 second after it was freed. A wipe
-// frees hundreds of entities and recreates them in the SAME frame, so none of
-// them qualify and the engine is forced to append fresh edicts instead - which
-// is what exhausts a map sitting at 2012/2047.
+// ED_Alloc tu choi tai su dung mot edict cho toi 1 giay sau khi no duoc giai
+// phong. Ma mot lan wipe giai phong hang tram entity roi tao lai chung trong
+// CUNG MOT FRAME, nen khong cai nao du dieu kien, va engine buoc phai noi them
+// edict moi - do chinh la thu lam can kiet mot map dang o muc 2012/2047.
 //
-// IVEngineServer::AllowImmediateEdictReuse() is Valve's own answer to this
-// ("Tells the engine we can immdiately re-use all edict indices even though we
-// may not have waited enough time", eiface.h:345). The paired convar
-// sv_useexplicitdelete - on by default - makes the engine tell clients the old
-// entity is gone before its index is recycled, which is exactly what the
-// cooldown was protecting against.
+// IVEngineServer::AllowImmediateEdictReuse() la cau tra loi cua chinh Valve cho
+// viec nay ("Tells the engine we can immdiately re-use all edict indices even
+// though we may not have waited enough time", eiface.h:345). Convar di kem
+// sv_useexplicitdelete - mac dinh BAT - lam engine bao cho client biet entity cu
+// da bien mat TRUOC khi chi so cua no duoc tai dung, va do dung la thu ma thoi
+// gian cho kia dang bao ve.
 //
-// This attacks the real failure mode. Segregation only ever added headroom;
-// this removes the need for it.
+// Huong nay danh dung vao co che hong that su. Phan tach chi bao gio cung chi
+// them bien do; con cai nay xoa bo NHU CAU phai co bien do.
 static bool g_ImmediateReuse   = true;
 
 // Cho phep tai su dung edict ngay, va thang vao ED_Alloc.
@@ -470,12 +471,12 @@ static int  g_EdgeLines        = 0;
 static int  g_AllocThisFrame   = 0;
 static int  g_MaxBurst         = 0;
 
-// The "big array" change is really three separate things that happen to
-// travel together. When it turned out to be the group that breaks entity
-// respawn on a wipe, they had to become separately testable:
-//   bigarray  - SV_AllocateEdicts hands out 4096 edicts instead of 2048
-//   pinlimits - LevelInit puts max_edicts / maxEntities back to 2048
-//   markfree  - LevelInit stamps FL_EDICT_FREE over slots 2048-4095
+// Thay doi goi la "mang lon" thuc ra la BA viec rieng biet tinh co di chung
+// voi nhau. Khi hoa ra chinh nhom nay lam hong vong hoi sinh entity luc wipe,
+// chung buoc phai tach ra de thu duoc rieng tung cai:
+//   bigarray  - SV_AllocateEdicts cap 4096 edict thay vi 2048
+//   pinlimits - LevelInit dat max_edicts / maxEntities ve lai 2048
+//   markfree  - LevelInit dong co FL_EDICT_FREE len cac o 2048-4095
 static bool g_PinMax     = true;   // sv.max_edicts        -> 2048
 static bool g_PinGlobals = true;   // gpGlobals->maxEntities -> 2048
 static bool g_MarkFree   = true;
@@ -844,7 +845,7 @@ static void LoadPatchSwitches() {
 }
 
 // ==========================================================================
-// Allow-list: which classnames may live above 2047
+// Danh sach cho phep: classname nao duoc nam o tren 2047
 // ==========================================================================
 #define MAX_PREFIX 64
 static char g_Prefix[MAX_PREFIX][32];
@@ -877,22 +878,21 @@ static void LoadAllowList() {
         if (g_PrefixCount) return;
     }
 
-    // Conservative built-in default. These families act purely through named
-    // I/O; nothing points a networked EHANDLE at them, so an index above 2047
-    // cannot corrupt a handle. Widen via serveronly.txt once verified.
+    // Mac dinh gan san, chon THAN TRONG. Cac ho nay hoat dong hoan toan qua I/O
+    // theo TEN; khong co EHANDLE cua lop co mang nao tro toi chung, nen chi so
+    // tren 2047 khong the lam hong mot handle. Muon mo rong thi ghi vao
+    // serveronly.txt sau khi da xac minh.
     AddPrefix("logic_");
     AddPrefix("math_");
     AddPrefix("ai_");
     EL_LOG("[EdictBudget] allow-list: built-in default (%d prefixes)", g_PrefixCount);
 }
 
-// An entry ending in '_' is a family prefix ("logic_" covers logic_relay and
-// everything else in that family). Anything else must match the classname
-// exactly.
+// Muc ket thuc bang '_' la TIEN TO CUA CA HO ("logic_" bao ca logic_relay va
+// moi thu khac trong ho do). Moi thu khac phai khop classname CHINH XAC.
 //
-// The distinction matters: "light" as a prefix would also swallow
-// light_dynamic, which unlike the baked lights IS a networked entity and must
-// stay below 2048.
+// Phan biet nay quan trong: neu coi "light" la tien to thi no se nuot luon ca
+// light_dynamic - lop nay khac voi den nuong san, no CO MANG, va phai nam duoi 2048.
 static bool MayLiveHigh(const char* cls) {
     if (!cls) return false;
     for (int i = 0; i < g_PrefixCount; i++) {
@@ -940,16 +940,16 @@ static void AuditDump() {
 }
 
 // --------------------------------------------------------------------------
-// Census of EVERY class the map creates, whether we relocate it or not.
+// Kiem ke MOI lop ma map tao ra, du ta co doi cho no hay khong.
 //
-// Choosing an allow-list by intuition does not work: the conservative
-// logic_/math_/ai_ set only freed 10 slots on c1m1_hotel, because L4D2 keeps
-// most of its map logic in VScript rather than in entities. To pick usefully
-// we need to know what a map actually spawns and in what quantity, sorted by
-// count, so the biggest server-side groups are obvious.
+// Chon danh sach cho phep bang truc giac thi KHONG AN THUA: tap than trong
+// logic_/math_/ai_ chi giai phong duoc 10 o tren c1m1_hotel, vi L4D2 dat phan
+// lon logic cua map trong VScript chu khong phai trong entity. Muon chon co ich
+// thi phai biet map THUC SU sinh ra nhung gi va bao nhieu cai, sap theo so
+// luong, de nhung nhom phia may chu lon nhat lo ra ngay.
 // --------------------------------------------------------------------------
 #define CENSUS_MAX 192
-#define CENSUS_TRIP 1900          // dump before the 2047 wall is hit
+#define CENSUS_TRIP 1900          // do ra truoc khi cham buc tuong 2047
 static bool g_Tripped = false;
 static char g_CensusName[CENSUS_MAX][40];
 static int  g_CensusCount[CENSUS_MAX];
@@ -974,8 +974,8 @@ static void CensusDump() {
     EL_LOG("[EdictBudget] CENSUS: %d entities created, %d distinct classes%s (sorted by count)",
         g_CensusTotal, g_CensusUsed, g_CensusDropped ? " (some dropped)" : "");
 
-    // Simple selection sort over indices - the table is small and this runs
-    // once per level.
+    // Sap xep chon don gian tren chi so - bang nho va ham nay chi chay mot lan
+    // moi map.
     for (int a = 0; a < g_CensusUsed && a < 60; a++) {
         int best = a;
         for (int b = a + 1; b < g_CensusUsed; b++) {
@@ -1015,9 +1015,10 @@ static bool ResolveEngineGlobals() {
     return true;
 }
 
-// The freetime array is a fixed 2048-float table indexed by edict index, used
-// by ED_Alloc to decide when a freed slot may be reused. Point it at a 4096
-// entry buffer, and widen the memset that clears it (it is hardcoded 0x2000).
+// Mang freetime la bang 2048 so thuc co dinh, danh chi so theo chi so edict,
+// duoc ED_Alloc dung de quyet dinh khi nao mot o vua giai phong duoc tai dung.
+// Tro no sang mot vung dem 4096 muc, va noi rong lenh memset xoa no (kich thuoc
+// dang bi ghi cung la 0x2000).
 static void PatchFreetime() {
     HMODULE h = GetModuleHandle("engine.dll");
     if (!h) return;
@@ -1042,8 +1043,8 @@ static void PatchFreetime() {
     }
     if (!text) return;
 
-    // Widen "push 0x2000" in the routine that clears the table, BEFORE the
-    // pointer below it gets rewritten (the signature stops short of it).
+    // Noi rong "push 0x2000" trong ham xoa bang, phai lam TRUOC khi con tro
+    // ben duoi no bi ghi de (chu ky dung lai truoc con tro do).
     const char* sizeSig  = "\x68\x00\x20\x00\x00\x6A\x00\x68";
     const char* sizeMask = "xxxxxxxx";
     uint8_t* sz = FindPattern("engine.dll", sizeSig, sizeMask);
@@ -1066,36 +1067,35 @@ static void PatchFreetime() {
 }
 
 // ==========================================================================
-// Move CFrameSnapshotManager's two per-entity tables out of the engine object
+// Doi hai bang theo-entity cua CFrameSnapshotManager ra khoi doi tuong engine
 // ==========================================================================
 //
-// This is the patch that makes indices above 2047 survivable at all.
+// Day la ban va lam cho chi so tren 2047 song duoc, ma khong co no thi khong.
 //
-// CFrameSnapshotManager holds two fixed 2048-entry tables inline:
+// CFrameSnapshotManager giu hai bang co dinh 2048 muc noi tuyen ben trong no:
 //
 //     +0x009C  CPackedEntity* m_pPackedData  [2048]
 //     +0x209C  int            m_pSerialNumber[2048]
 //
-// Seven instructions index them, none of which bounds-check - the engine has
-// no reason to, since a stock edict index can never exceed 2047. Writing at
-// index i >= 2048 therefore lands on whatever follows:
+// Bay lenh danh chi so vao chung, khong lenh nao kiem bien - engine khong co ly
+// do phai kiem, vi chi so edict goc khong bao gio vuot 2047. Do do ghi tai chi
+// so i >= 2048 se roi vao bat cu thu gi nam ke sau:
 //
-//     m_pPackedData[i]   for i >= 2048  ->  m_pSerialNumber[i - 2048]
-//                        (silently corrupts the serial of a LOW entity, which
-//                         is what makes an EHANDLE decode to a garbage
-//                         pointer and crash on the next dereference)
-//     m_pSerialNumber[i] for i >= 2993  ->  sv, the CGameServer object
-//                        (holds map state and the worldmodel pointer; once
-//                         damaged the next BSP lump validation reads garbage
-//                         and the engine reports "Cannot load corrupted map")
+//     m_pPackedData[i]   voi i >= 2048  ->  m_pSerialNumber[i - 2048]
+//                        (AM THAM lam hong serial cua mot entity THAP - day
+//                         chinh la thu khien EHANDLE giai ma ra con tro rac va
+//                         sap ngay lan giai tham chieu ke tiep)
+//     m_pSerialNumber[i] voi i >= 2993  ->  sv, doi tuong CGameServer
+//                        (giu trang thai map va con tro worldmodel; hong roi thi
+//                         lan kiem tra lump BSP ke tiep doc phai rac va engine
+//                         bao "Cannot load corrupted map")
 //
-// So there is no safe sub-range: allocating upward corrupts serials,
-// allocating downward corrupts sv. Both tables have to move somewhere with
-// room for 4096 entries.
+// Vay khong co dai con nao an toan: cap phat len tren thi hong serial, cap phat
+// xuong duoi thi hong sv. Ca hai bang deu PHAI doi sang cho co du 4096 muc.
 //
-// Every access is a 7-byte SIB form "[base + index*4 + disp32]" and rewrites
-// to the same length as "[index*4 + abs32]", so this is an in-place edit with
-// no trampolines and no instruction-boundary risk:
+// Moi lan truy cap deu la dang SIB 7 byte "[base + index*4 + disp32]" va viet
+// lai thanh "[index*4 + abs32]" DUNG BANG DO DAI, nen day la sua tai cho, khong
+// can trampoline, khong co rui ro lech bien lenh:
 //
 //     8B BC B1 9C 00 00 00   mov edi,[ecx+esi*4+0x9C]   -> 8B 3C B5 <packed>
 //     8B 84 B1 9C 20 00 00   mov eax,[ecx+esi*4+0x209C] -> 8B 04 B5 <serial>
@@ -1105,15 +1105,15 @@ static void PatchFreetime() {
 //     89 94 B9 9C 00 00 00   mov [ecx+edi*4+0x9C],edx   -> 89 14 BD <packed>
 //     89 94 B9 9C 20 00 00   mov [ecx+edi*4+0x209C],edx -> 89 14 BD <serial>
 //
-// A full disassembly sweep of .text confirms these are the only seven
-// scaled-index accesses at either displacement; the other +0x9C references
-// belong to unrelated objects (word-sized writes, esp-relative locals).
+// Quet dich nguoc toan bo .text xac nhan day la BAY lan truy cap chi-so-co-ty-le
+// duy nhat o ca hai do doi; cac tham chieu +0x9C khac thuoc ve doi tuong khong
+// lien quan (ghi kich thuoc word, bien cuc bo tinh theo esp).
 //
-// Missing even one would leave the engine reading one table while writing
-// another, so the count is verified and the patch is all-or-nothing.
+// Sot du mot cai thoi la engine se doc mot bang trong khi ghi vao bang kia, nen
+// so luong nay da duoc kiem chung va ban va la DUOC-TAT-CA-HOAC-KHONG.
 
-static uint32_t* g_PackedTable = NULL;   // 4096 entries
-static uint32_t* g_SerialTable = NULL;   // 4096 entries
+static uint32_t* g_PackedTable = NULL;   // 4096 muc
+static uint32_t* g_SerialTable = NULL;   // 4096 muc
 
 struct SnapAccess { const char* sig; const char* head; bool serial; };
 
@@ -1129,7 +1129,7 @@ static bool PatchSnapshotTables() {
     };
     const int kCount = sizeof(kSites) / sizeof(kSites[0]);
 
-    // Locate them all before touching anything.
+    // Tim du HET truoc khi dong vao bat cu thu gi.
     uint8_t* found[kCount];
     for (int i = 0; i < kCount; i++) {
         found[i] = FindPattern("engine.dll", kSites[i].sig, "xxxxxxx");
@@ -1140,27 +1140,26 @@ static bool PatchSnapshotTables() {
         }
     }
 
-    // The tables also have to be cleared once per level, but NOT by editing
-    // the engine's clear routine.
+    // Hai bang nay cung phai duoc xoa mot lan moi map, NHUNG KHONG duoc lam
+    // bang cach sua ham xoa cua engine.
     //
-    // An earlier version rewrote the memset inside
-    // CFrameSnapshotManager::LevelChanged. That broke a third-party extension:
+    // Mot ban truoc da viet lai lenh memset ben trong
+    // CFrameSnapshotManager::LevelChanged. Viec do lam hong mot extension khac:
     //
     //   [SM] Unable to load extension "cutlrbtreefix.ext":
     //        Failed to create_inline: CFrameSnapshotManager::LevelChanged
     //
-    // cutlrbtreefix installs an inline hook on exactly that function, finds it
-    // by signature, and our edited bytes made the signature miss - so the
-    // extension silently stopped loading and the server lost a genuine engine
-    // fix it depends on.
+    // cutlrbtreefix cai mot inline hook vao DUNG ham do, tim ham bang chu ky, va
+    // may byte ta sua lam chu ky khong con khop - the la extension am tham ngung
+    // nap, va may chu mat mot ban va engine that su ma no dang phu thuoc.
     //
-    // Clearing our own table from Hook_LevelInit gets the same result and
-    // leaves that function byte-for-byte untouched. The engine still zeroes
-    // its now-unused inline array, which costs 8KB of memset per level and
-    // harms nothing.
+    // Xoa bang CUA CHINH TA tu Hook_LevelInit cho ket qua y het, ma de nguyen ham
+    // do khong doi mot byte nao. Engine van xoa mang noi tuyen gio da bo khong
+    // cua no, ton 8KB memset moi map va khong hai gi.
     //
-    // General rule this cost us: patch only what we must, and prefer doing
-    // work in our own hooks over editing a function somebody else may hook.
+    // LUAT CHUNG rut ra tu cai gia nay: chi va nhung gi BUOC PHAI va, va uu tien
+    // lam viec trong hook cua chinh minh hon la sua mot ham ma nguoi khac co the
+    // dang moc vao.
 
     g_PackedTable = (uint32_t*)_aligned_malloc(EXT_LIMIT * sizeof(uint32_t), 16);
     g_SerialTable = (uint32_t*)_aligned_malloc(EXT_LIMIT * sizeof(uint32_t), 16);
@@ -1168,11 +1167,10 @@ static bool PatchSnapshotTables() {
     memset(g_PackedTable, 0, EXT_LIMIT * sizeof(uint32_t));
     memset(g_SerialTable, 0, EXT_LIMIT * sizeof(uint32_t));
 
-    // Starting from zero is correct rather than merely convenient: Metamod
-    // loads us at server startup, before the first map, so the stock tables
-    // hold nothing worth carrying over. Copying would mean trusting a guess
-    // about which singleton owns them, and a wrong guess would seed our table
-    // with dangling packed-entity pointers.
+    // Bat dau tu ZERO la DUNG chu khong chi la tien: Metamod nap plugin luc may
+    // chu khoi dong, TRUOC map dau tien, nen bang goc khong giu gi dang mang theo.
+    // Chep lai co nghia la tin vao mot phong doan xem singleton nao so huu chung,
+    // ma doan sai thi bang cua ta se duoc gieo bang con tro packed-entity treo.
 
     for (int i = 0; i < kCount; i++) {
         uint8_t buf[7];
@@ -1383,11 +1381,11 @@ static void PatchAllocFailTrap() {
              m, stub, errTarget, contTarget);
 }
 
-// SV_AllocateEdicts starts with "mov eax, 0x800" and then sizes both the edict
-// array and the changeinfo array from it. Bumping that one immediate makes the
-// ENGINE allocate a genuine 4096-entry array, at the right time, with no
-// pointer games from us.
-// The trailing dword is a RELOCATED absolute address, so it must be wildcarded.
+// SV_AllocateEdicts mo dau bang "mov eax, 0x800" roi lay so do de dinh kich thuoc
+// ca mang edict lan mang changeinfo. Nang mot gia tri tuc thoi do la CHINH ENGINE
+// se cap phat mot mang 4096 muc that su, dung thoi diem, khong can ta lam tro gi
+// voi con tro.
+// Dword o cuoi la dia chi tuyet doi DA DUOC DOI THEO BASE, nen phai dat mat na.
 static bool PatchEngineAllocSize() {
     const char* sig  = "\xB8\x00\x08\x00\x00\x89\x86\x18\x02\x00\x00\xA3\x00\x00\x00\x00";
     const char* mask = "xxxxxxxxxxxx....";
@@ -1402,48 +1400,47 @@ static bool PatchEngineAllocSize() {
     return true;
 }
 
-// engine.dll has two near-identical index lookups:
-//   RVA 0x1E0030  IndexOfEdict      - bounds-checks against num_edicts
-//   RVA 0x1E0060  IndexOfEdictInfo  - bounds-checks against max_edicts
-// Layout of both:
-//   +20  cmp esi, [limit]
-//   +26  jl  +41              ; in range -> return index
+// engine.dll co hai ham tra chi so gan giong het nhau:
+//   RVA 0x1E0030  IndexOfEdict      - kiem bien theo num_edicts
+//   RVA 0x1E0060  IndexOfEdictInfo  - kiem bien theo max_edicts
+// Bo cuc ca hai:
+//   +20  cmp esi, [gioi han]
+//   +26  jl  +41              ; trong tam -> tra ve chi so
 //   +28  push "NUM_FOR_EDICT[INFO]: bad pointer"
-//   +33  call Error           ; FATAL - never returns
+//   +33  call Error           ; TU VONG - khong bao gio tra ve
 //   +41  mov eax, esi ; ret
 //
-// We deliberately hold max_edicts at 2048 so the engine's own allocator stays
-// inside the 11-bit networkable range. But the array really is 4096 entries,
-// so a perfectly valid edict at index 2048+ trips these checks and the engine
-// aborts with "NUM_FOR_EDICTINFO: bad pointer".
+// Ta CO Y giu max_edicts o 2048 de bo cap phat cua chinh engine nam trong dai
+// 11 bit co the noi mang. Nhung mang thuc su la 4096 muc, nen mot edict hoan
+// toan hop le o chi so 2048+ se lam vap hai phep kiem nay va engine bo cuoc voi
+// "NUM_FOR_EDICTINFO: bad pointer".
 //
-// Turning the conditional jump into an unconditional one skips the fatal call
-// while still returning the correct index - the bounds check is the only thing
-// lost, and it is checking against a limit we intentionally understate.
+// Doi lenh nhay co dieu kien thanh vo dieu kien se bo qua loi goi tu vong ma van
+// tra ve dung chi so - thu duy nhat mat di la phep kiem bien, ma no dang kiem
+// theo mot gioi han chinh ta co tinh khai thap hon su that.
 //
-// Anchoring on the function prologue was a mistake: it found two of these and
-// silently missed the rest. There are four such aborts across THREE functions
-// with different prologues, and one of the missed ones is called by ED_Alloc
-// itself to clear a freshly handed out edict - so every relocated entity trips
-// it the moment segregation is actually switched on.
+// Neo theo prologue cua ham la MOT SAI LAM: no tim duoc hai cho va am tham bo sot
+// phan con lai. Co BON cho bo cuoc nhu vay nam trong BA ham co prologue khac nhau,
+// va mot trong nhung cho bi bo sot lai duoc chinh ED_Alloc goi de xoa mot edict
+// vua cap - nen moi entity duoc doi cho deu vap phai no ngay khi bat phan tach.
 //
-// The error string is the reliable anchor. Every abort site is reached by a
-// conditional jump sitting immediately before its "push <string>", so finding
-// the string references finds all of them regardless of function shape:
+// Chuoi thong bao loi moi la cai neo dang tin. Moi cho bo cuoc deu duoc toi bang
+// mot lenh nhay co dieu kien nam ngay truoc "push <chuoi>", nen tim cac tham chieu
+// toi chuoi la tim ra HET, bat ke hinh dang ham ra sao:
 //
-//     3B 35 <limit>   cmp esi, [max_edicts]
-//     7C xx           jl  <in-range>          <- flip to EB, same target
-//     68 <string>     push "NUM_FOR_...: bad pointer"
-//     E8 <rel>        call Error              <- never returns
+//     3B 35 <gioi han>  cmp esi, [max_edicts]
+//     7C xx             jl  <trong tam>       <- doi thanh EB, cung dich
+//     68 <chuoi>        push "NUM_FOR_...: bad pointer"
+//     E8 <rel>          call Error            <- khong bao gio tra ve
 //
-// Flipping jl to jmp keeps the destination byte untouched, so control lands
-// exactly where the in-range case would have landed. Nothing is lost except a
-// check against a limit we deliberately understate.
+// Doi jl thanh jmp giu nguyen byte dich, nen luong dieu khien roi dung vao noi ma
+// truong hop trong-tam le ra da roi vao. Khong mat gi ngoai mot phep kiem theo
+// gioi han ma ta co tinh khai thap.
 static int PatchAbortsFor(uint8_t* base, size_t size, const char* text) {
     size_t tlen = strlen(text);
 
-    // Locate the literal, then hunt for "push <its runtime address>". Reading
-    // the address out of the image keeps this relocation-safe.
+    // Tim chuoi truoc, roi san lenh "push <dia chi luc chay cua no>". Doc dia chi
+    // ra tu chinh anh module thi khong so bi doi theo base.
     uint8_t* str = NULL;
     for (size_t i = 0; i + tlen + 1 <= size; i++) {
         if (memcmp(base + i, text, tlen + 1) == 0) { str = base + i; break; }
@@ -1455,15 +1452,15 @@ static int PatchAbortsFor(uint8_t* base, size_t size, const char* text) {
         if (base[i] != 0x68) continue;
         if (*(uint8_t**)(base + i + 1) != str) continue;
 
-        // Two layouts occur, and only looking for the first one is what made
-        // an earlier version miss EDICT_NUM entirely:
+        // Co HAI bo cuc, va chi tim moi bo cuc dau la thu da lam mot ban truoc
+        // bo sot han EDICT_NUM:
         //
-        //   7C xx       jl in-range          <- guard sits 2 bytes back
-        //   68 <str>    push "..."
+        //   7C xx       jl trong-tam         <- lenh canh nam lui 2 byte
+        //   68 <chuoi>  push "..."
         //
-        //   7C xx       jl in-range          <- guard sits 3 bytes back
-        //   56          push esi             (an extra printf argument)
-        //   68 <str>    push "..."
+        //   7C xx       jl trong-tam         <- lenh canh nam lui 3 byte
+        //   56          push esi             (mot tham so printf phu)
+        //   68 <chuoi>  push "..."
         size_t at;
         if (base[i - 2] == 0x7C)                                   at = i - 2;
         else if (base[i - 3] == 0x7C && base[i - 1] >= 0x50
@@ -1487,10 +1484,10 @@ static void PatchIndexOfEdictBounds() {
     uint8_t* base = (uint8_t*)mi.lpBaseOfDll;
     size_t size = mi.SizeOfImage;
 
-    // EDICT_NUM is the index -> edict_t* lookup behind PEntityOfEntIndex, which
-    // SourceMod, plugins and the game itself call constantly. It compares the
-    // index against max_edicts, and we deliberately hold that at 2048 - so
-    // every lookup of an entity we placed in 2048..4095 killed the server.
+    // EDICT_NUM la phep tra chi so -> edict_t* nam sau PEntityOfEntIndex, ma
+    // SourceMod, cac plugin va ban than game goi lien tuc. No so chi so voi
+    // max_edicts, ma ta thi CO Y giu con so do o 2048 - nen moi lan tra cuu mot
+    // entity ta da dat vao 2048..4095 deu giet may chu.
     int n = PatchAbortsFor(base, size, "NUM_FOR_EDICT: bad pointer")
           + PatchAbortsFor(base, size, "NUM_FOR_EDICTINFO: bad pointer")
           + PatchAbortsFor(base, size, "EDICT_NUM: bad number %i");
@@ -1499,11 +1496,12 @@ static void PatchIndexOfEdictBounds() {
     else        EL_LOG("[EdictBudget] index-lookup: %d bounds aborts disabled, "
                          "index preserved at every one (expect 6)", n);
 
-    // Verify where gpGlobals->maxEntities actually lands. The SDK's CGlobalVars
-    // layout is an assumption, and the fields either side of maxEntities are
-    // nTimestampNetworkingBase (100) and nTimestampRandomizeWindow (32), which
-    // drive tick-count property encoding. Writing 2048 over one of those would
-    // corrupt encoding server-wide - so check rather than assume.
+    // Kiem xem gpGlobals->maxEntities THUC SU roi vao dau. Bo cuc CGlobalVars
+    // trong SDK chi la mot GIA DINH, va hai truong nam hai ben maxEntities la
+    // nTimestampNetworkingBase (100) va nTimestampRandomizeWindow (32) - chung
+    // dieu khien cach ma hoa thuoc tinh theo so tick. Ghi 2048 de len mot trong
+    // hai truong do la lam hong ma hoa tren toan may chu - nen phai KIEM chu
+    // khong duoc GIA DINH.
     if (gpGlobals) {
         void* p = &gpGlobals->maxEntities;
         EL_LOG("[EdictBudget] gpGlobals=%p  &maxEntities=%p (engine+0x%X)  value=%d",
@@ -1511,27 +1509,28 @@ static void PatchIndexOfEdictBounds() {
     }
 }
 
-// ED_Alloc's forced-index path validates against num_edicts, which only counts
-// what has been handed out so far - so a forced index of 2048+ is always
-// rejected. It has to compare against something bigger.
+// Nhanh "ep chi so" cua ED_Alloc kiem tinh hop le theo num_edicts, ma con so do
+// chi dem NHUNG GI DA CAP RA cho toi luc nay - nen mot chi so ep buoc 2048+ luon
+// bi tu choi. No phai duoc so voi mot con so lon hon.
 //
-// The obvious move - point it at max_edicts and raise that to 4096 for the
-// duration of the call - is a trap. num_edicts only ever grows and its ceiling
-// is max_edicts, so a single frame with max_edicts == 4096 lets num_edicts pass
-// 2048 permanently. TakeTickSnapshot then walks up to num_edicts while filling
-// a 2048-entry stack array, writes past the stack cookie, and the process dies
-// with no minidump and nothing on the console.
+// Nuoc di hien nhien - tro no sang max_edicts roi nang con so do len 4096 trong
+// suot loi goi - la mot cai BAY. num_edicts chi tang chu khong bao gio giam, va
+// tran cua no la max_edicts; nen chi mot frame co max_edicts == 4096 la du de
+// num_edicts vuot 2048 VINH VIEN. Sau do TakeTickSnapshot duyet len toi num_edicts
+// trong khi do day mot mang 2048 muc tren ngan xep, ghi tran qua stack cookie, va
+// tien trinh chet khong minidump, khong mot dong nao tren console.
 //
-// Comparing against a plain immediate removes the window entirely: no engine
-// global is ever mutated, so nothing can observe an inflated limit.
+// So voi mot gia tri tuc thoi thuan tuy thi xoa bo han cua so nguy hiem do:
+// khong mot bien toan cuc nao cua engine bi thay doi, nen khong gi quan sat duoc
+// mot gioi han bi thoi phong.
 //
-//     3B 05 <abs32>   cmp eax, [num_edicts]   (6 bytes)
-//  -> 3D 00 10 00 00  cmp eax, 4096           (5 bytes) + nop
+//     3B 05 <abs32>   cmp eax, [num_edicts]   (6 byte)
+//  -> 3D 00 10 00 00  cmp eax, 4096           (5 byte) + nop
 //
-// The append path further down still reads max_edicts, which stays pinned at
-// 2048 - so ordinary allocation cannot climb past the networkable range. Only
-// an explicitly forced index can reach the upper half, and the path still
-// checks FL_EDICT_FREE before handing the slot over.
+// Nhanh noi-them o ben duoi van doc max_edicts, ma con so do van bi ghim o 2048 -
+// nen cap phat thong thuong khong the leo qua dai co the noi mang. Chi mot chi so
+// bi ep TUONG MINH moi cham toi nua tren, va nhanh do van kiem FL_EDICT_FREE
+// truoc khi giao o ra.
 static void PatchForcedIndexCheck() {
     const char* sig  = "\x55\x8B\xEC\x8B\x45\x08\x56\x85\xC0\x78\x00\x3B\x05\x00\x00\x00\x00\x7C";
     const char* mask = "xxxxxxxxxx.xx....x";
@@ -1548,13 +1547,13 @@ static void PatchForcedIndexCheck() {
 }
 
 // ==========================================================================
-// CreateEntityByName detour - the only way to learn the classname of the
-// entity an upcoming CreateEdict belongs to.
+// Detour CreateEntityByName - cach duy nhat de biet classname cua entity ma lan
+// goi CreateEdict sap toi thuoc ve.
 //
-// This build of server.dll has no standalone "CreateEntityByName\0" string, so
-// we anchor on the unique error message inside the function itself. The real
-// prologue is 7 bytes (55 8B EC 56 8B 75 0C); stealing the usual 5 would split
-// "8B 75 0C" and execute garbage.
+// Ban server.dll nay KHONG co chuoi "CreateEntityByName\0" doc lap, nen ta neo
+// theo thong bao loi duy nhat nam ben trong chinh ham do. Prologue that su dai
+// 7 byte (55 8B EC 56 8B 75 0C); cuop 5 byte nhu thong le se cat doi "8B 75 0C"
+// va thuc thi rac.
 // ==========================================================================
 typedef void* (__cdecl *CreateEntityByName_t)(const char*, int);
 static CreateEntityByName_t g_OrigCreateEntity = NULL;
@@ -1564,15 +1563,15 @@ static uint8_t* g_Trampoline = NULL;
 static const char* g_PendingClass = NULL;
 
 static void* __cdecl Detour_CreateEntityByName(const char* cls, int forceIndex) {
-    const char* prev = g_PendingClass;   // nested creates must not inherit
+    const char* prev = g_PendingClass;   // loi tao long nhau khong duoc ke thua
     g_PendingClass = cls;
     CensusAdd(cls);
     void* r = g_OrigCreateEntity(cls, forceIndex);
     g_PendingClass = prev;
 
-    // A map that runs out of edicts never reaches ServerActivate, so the
-    // census would never be printed for exactly the map we need it for.
-    // Dump it once as the networked range starts to fill up instead.
+    // Mot map het edict thi khong bao gio toi duoc ServerActivate, nen ban kiem ke
+    // se khong bao gio duoc in ra cho DUNG cai map ma ta can no nhat.
+    // Thay vao do, do ra MOT LAN ngay khi dai co mang bat dau day.
     if (!g_Tripped && g_num_edicts && *g_num_edicts >= CENSUS_TRIP) {
         g_Tripped = true;
         EL_LOG("[EdictBudget] --- num_edicts reached %d, early census ---",
@@ -2865,49 +2864,48 @@ static void RemoveDetour() {
 }
 
 // ==========================================================================
-// CreateEdict hook - the whole point of the plugin
+// Hook CreateEdict - toan bo muc dich cua nhom cong tac 4096
 // ==========================================================================
 static edict_t* Hook_CreateEdict(int forceIndex) {
-    // Caller asked for a specific slot; never second-guess that.
+    // Ben goi da yeu cau MOT o cu the; tuyet doi khong doan lai y ho.
     if (forceIndex > 0) RETURN_META_VALUE(MRES_IGNORED, nullptr);
 
-    // Anything not on the allow-list is left entirely to the engine, whose
-    // allocator is bounded by max_edicts = 2048 - i.e. stock behaviour.
+    // Moi thu khong nam trong danh sach cho phep deu de nguyen cho engine lo,
+    // ma bo cap phat cua no bi chan boi max_edicts = 2048 - tuc hanh vi goc.
     if (!g_ExtReady || !MayLiveHigh(g_PendingClass)) {
         RETURN_META_VALUE(MRES_IGNORED, nullptr);
     }
     if (!gpGlobals || !gpGlobals->pEdicts) RETURN_META_VALUE(MRES_IGNORED, nullptr);
 
-    // Allocate DOWNWARD from the top of the range.
+    // Cap phat DI XUONG tu dinh cua dai.
     //
-    // server.dll's CBaseEntityList has a single m_EntPtrArray[4096] whose upper
-    // half is reserved for entities that have no edict at all: index 0..2047 is
-    // written by AddNetworkableEntity(entindex), while 2048..4095 is handed out
-    // by AddNonNetworkableEntity() from m_freeNonNetworkableList.
+    // CBaseEntityList cua server.dll co DUY NHAT mot m_EntPtrArray[4096], ma nua
+    // tren duoc danh rieng cho entity KHONG CO EDICT: chi so 0..2047 do
+    // AddNetworkableEntity(entindex) ghi, con 2048..4095 do
+    // AddNonNetworkableEntity() cap ra tu m_freeNonNetworkableList.
     //
-    // Forcing an edict index of, say, 3000 makes server.dll write
-    // m_EntPtrArray[3000] via the networkable path - the very same slot its
-    // non-networkable pool may hand to a different entity. Two entities then
-    // share one slot, the second overwrites the first, and a later EHANDLE
-    // lookup passes the serial check but returns a dangling pointer. That is
-    // the observed crash: "call [vtable+0x324]" jumping into string data.
+    // Ep mot chi so edict, vi du 3000, se lam server.dll ghi vao
+    // m_EntPtrArray[3000] qua duong CO MANG - dung cai o ma be chua khong-co-mang
+    // cua no co the giao cho MOT entity khac. The la hai entity dung chung mot o,
+    // cai thu hai de len cai thu nhat, va mot lan tra cuu EHANDLE ve sau se qua
+    // duoc phep kiem serial nhung tra ve con tro treo. Do chinh la vu sap quan sat
+    // duoc: "call [vtable+0x324]" nhay vao vung du lieu chuoi.
     //
-    // The free list is built in ascending order and popped from the head, so
-    // server.dll consumes 2048 upward. Allocating from 4095 downward keeps the
-    // two apart until their combined use would exceed 2048 slots - and
-    // server.dll only ever needs a few hundred.
+    // Danh sach trong duoc dung theo thu tu TANG DAN va lay ra tu dau, nen
+    // server.dll tieu thu 2048 di LEN. Cap phat tu 4095 di XUONG giu hai ben tach
+    // nhau cho toi khi tong muc dung cua ca hai vuot 2048 o - ma server.dll thi
+    // xua nay chi can vai tram.
     for (int n = 0; n < EXT_LIMIT - NET_LIMIT; n++) {
         int i = g_Cursor - n;
         if (i < NET_LIMIT) i += (EXT_LIMIT - NET_LIMIT);
         edict_t* e = gpGlobals->pEdicts + i;
         if (!e->IsFree()) continue;
 
-        // No limit is raised here any more. ED_Alloc's forced path now compares
-        // the index against a constant baked into the code (see
-        // PatchForcedIndexCheck), so max_edicts stays 2048 for the entire life
-        // of the server. Raising it even briefly used to let num_edicts creep
-        // past 2048 and permanently overflow the engine's 2048-entry snapshot
-        // list on the stack.
+        // O day KHONG con nang gioi han nao nua. Nhanh ep-chi-so cua ED_Alloc gio
+        // so chi so voi mot hang so nuong thang vao ma (xem PatchForcedIndexCheck),
+        // nen max_edicts giu nguyen 2048 suot doi may chu. Nang no du chi trong
+        // choc lat cung tung du de num_edicts bo qua 2048 va tran VINH VIEN danh
+        // sach snapshot 2048 muc cua engine nam tren ngan xep.
         edict_t* got = SH_CALL(engine, &IVEngineServer::CreateEdict)(i);
 
         if (got) {
@@ -2976,10 +2974,10 @@ bool SamplePlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, 
     // tich lump cung di qua dictionary slot 1. Cai o day la som nhat co the.
     if (g_Swap > 0) { LoadSwapList(); InstallSwap(); }
 
-    // Both of these must succeed. A 4096-entry edict array with 2048-entry
-    // snapshot tables is strictly worse than doing nothing: the extra edicts
-    // would be usable right up to the point where they silently overwrite
-    // neighbouring engine state.
+    // CA HAI deu phai thanh cong. Mot mang edict 4096 muc di kem bang snapshot chi
+    // 2048 muc thi TE HON HAN viec khong lam gi ca: nhung edict them ra se dung
+    // duoc binh thuong cho toi dung luc chung am tham ghi de len trang thai engine
+    // nam ke ben.
     g_BigArrayOn = g_PatchBigArray ? PatchEngineAllocSize() : false;
     bool bigTables = g_PatchSnapshot ? PatchSnapshotTables() : false;
     g_EngineArray4096 = g_BigArrayOn && bigTables;
@@ -3053,11 +3051,11 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
                  "khong doi gi", pMapName ? pMapName : "?");
     }
 
-    // Note the flag: pinning is owed whenever the array was widened, even when
-    // segregation itself is off.
+    // Chu y dieu kien: viec GHIM la mon no phai tra moi khi mang duoc noi rong,
+    // ke ca khi ban than phan tach dang tat.
     if (g_Stage == 0 || !g_BigArrayOn) return true;
 
-    // server.dll is fully mapped by now, unlike at Load() time.
+    // Den luc nay server.dll da duoc anh xa day du, khac voi luc Load().
     if (g_PatchDetour && !g_OrigCreateEntity) InstallDetour();
     if (!g_SMListHead) ResolveSMListHead();
 
@@ -3069,48 +3067,47 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
     g_EdgeLines   = 0;
     g_MaxBurst    = 0;
 
-    // Stand in for the engine's per-level clear of m_pPackedData. We no longer
-    // edit CFrameSnapshotManager::LevelChanged, because a third-party
-    // extension hooks that function and our edits stopped it from loading.
-    // Serial numbers are deliberately left alone - the engine never cleared
-    // them either, since one is only read when its packed pointer is non-NULL.
+    // Lam thay phan xoa m_pPackedData moi map cua engine. Ta KHONG con sua
+    // CFrameSnapshotManager::LevelChanged nua, vi mot extension cua ben thu ba
+    // moc vao dung ham do va cac byte ta sua khien no khong nap duoc.
+    // Serial number thi CO Y de nguyen - engine cung chua bao gio xoa chung, boi
+    // mot serial chi duoc doc khi con tro packed cua no khac NULL.
     if (g_PackedTable) memset(g_PackedTable, 0, EXT_LIMIT * sizeof(uint32_t));
     g_Cursor = EXT_LIMIT - 1;
     g_ExtReady = false;
 
-    // SV_AllocateEdicts has already run for this level and, thanks to the
-    // patch above, handed us a real 4096-entry array. It leaves the memory
-    // uninitialised, and FL_EDICT_FREE is a SET bit - so a zeroed slot reads
-    // as "occupied". Mark our half free explicitly, or nothing can ever be
-    // placed there.
-    // Stamp the upper half whenever the array was widened, not just when
-    // segregation is on.
+    // SV_AllocateEdicts da chay xong cho map nay va, nho ban va o tren, giao cho
+    // ta mot mang 4096 muc that su. No de vung nho KHONG KHOI TAO, ma FL_EDICT_FREE
+    // la mot bit BAT - nen mot o toan so 0 doc ra thanh "dang chiem dung". Phai
+    // danh dau nua cua ta la TRONG mot cach tuong minh, neu khong thi khong bao gio
+    // dat duoc gi vao do.
+    // Dong dau len nua tren MOI KHI mang duoc noi rong, khong phai chi khi phan
+    // tach dang bat.
     //
-    // SV_AllocateEdicts hands back raw malloc memory, and FL_EDICT_FREE is a
-    // SET bit - so an uninitialised slot reads as OCCUPIED, with a random
-    // m_pUnk pointer. Gating this on segregation meant that with the array
-    // widened but segregation off, slots 2048-4095 held live-looking garbage
-    // for anything that reached them. Marking them free costs one pass per
-    // level and removes a whole class of "reads a plausible-looking entity
-    // that never existed".
+    // SV_AllocateEdicts tra ve vung malloc tho, va FL_EDICT_FREE la bit BAT - nen
+    // mot o chua khoi tao doc ra thanh DANG CHIEM DUNG, kem mot con tro m_pUnk
+    // ngau nhien. Dat dieu kien nay theo phan tach co nghia la khi mang da noi rong
+    // ma phan tach lai tat, cac o 2048-4095 giu rac trong-nhu-that cho bat cu ai
+    // cham toi chung. Danh dau chung la trong ton mot luot duyet moi map va xoa bo
+    // ca mot lop loi kieu "doc ra mot entity trong rat co ly ma chua tung ton tai".
     if (g_MarkFree && gpGlobals && gpGlobals->pEdicts && *g_max_edicts >= EXT_LIMIT) {
         uint8_t* arr = (uint8_t*)gpGlobals->pEdicts;
         for (int i = NET_LIMIT; i < EXT_LIMIT; i++) {
             memset(arr + i * EDICT_SIZE, 0, EDICT_SIZE);
             *(uint32_t*)(arr + i * EDICT_SIZE) = FL_FREE;
         }
-        // The slots are now safe to look at, but only usable when the snapshot
-        // tables have been moved as well.
+        // Gio cac o da AN TOAN de nhin vao, nhung chi DUNG DUOC khi bang snapshot
+        // cung da duoc doi cho.
         g_ExtReady = g_EngineArray4096;
     }
 
-    // Hold both limits at the stock value. The array stays 4096 entries, but
-    // engine loops, server.dll and SourceMod all see exactly 2048 - which is
-    // what every one of them was built for.
-    // Report what the engine actually had before touching anything. Forcing
-    // maxEntities to 2048 was an assumption, never a measurement, and it is
-    // the one statement that only ever runs when bigarray is on - which is
-    // exactly the group that breaks respawn on a wipe.
+    // Giu CA HAI gioi han o gia tri goc. Mang van la 4096 muc, nhung cac vong lap
+    // cua engine, server.dll va SourceMod deu nhin thay dung 2048 - va do la con
+    // so ma tat ca bon ho duoc xay dung de lam viec cung.
+    // Bao cao xem engine THUC SU dang co gi TRUOC khi dong vao bat cu thu gi. Viec
+    // ep maxEntities ve 2048 la mot GIA DINH, chua bao gio la mot PHEP DO, va no
+    // la cau lenh duy nhat chi chay khi bigarray dang bat - dung cai nhom lam hong
+    // vong hoi sinh luc wipe.
     EL_LOG("[EdictBudget] before pin: sv.max_edicts=%d sv.num_edicts=%d "
              "gpGlobals->maxEntities=%d",
              (int)*g_max_edicts, g_num_edicts ? (int)*g_num_edicts : -1,
@@ -3126,45 +3123,44 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
 }
 
 // --------------------------------------------------------------------------
-// Watchdog for the one condition that kills the process without a dump
+// Bo canh cho DUY NHAT mot tinh huong giet tien trinh ma khong de lai dump
 // --------------------------------------------------------------------------
 //
-// TakeTickSnapshot (engine RVA 0x11D900) opens a fixed 0x1010-byte frame and
-// collects the indices of live edicts into a WORD array at [ebp-0x1004], with
-// the stack cookie sitting at [ebp-4]. That leaves room for exactly
-// (0x1004 - 4) / 2 = 2048 entries - stock max_edicts, filled to the brim with
-// nothing to spare.
+// TakeTickSnapshot (engine RVA 0x11D900) mo mot khung ngan xep co dinh 0x1010
+// byte va gom chi so cua cac edict dang song vao mot mang WORD tai [ebp-0x1004],
+// con stack cookie thi nam o [ebp-4]. Cho do du dung
+// (0x1004 - 4) / 2 = 2048 muc - dung bang max_edicts goc, day chat khong du mot o.
 //
-// The loop is bounded by num_edicts, which only ever grows, and whose ceiling
-// is max_edicts. So a single moment of max_edicts == 4096 lets num_edicts pass
-// 2048 permanently for that level, and the next snapshot writes entry 2049
-// straight over the cookie. __security_check_cookie then fast-fails: the
-// process disappears with no minidump and nothing on the console - exactly the
-// crash being hunted.
+// Vong lap bi chan boi num_edicts, ma con so do chi tang chu khong giam, va tran
+// cua no la max_edicts. Nen chi mot KHOANH KHAC max_edicts == 4096 la du de
+// num_edicts vuot 2048 VINH VIEN cho map do, va ban snapshot ke tiep se ghi muc
+// thu 2049 de thang len cookie. __security_check_cookie sau do that bai tuc thi:
+// tien trinh bien mat, khong minidump, khong mot dong nao tren console - dung cai
+// vu sap ma ta dang truy tim.
 //
-// Hook_CreateEdict raises max_edicts to 4096 around its SH_CALL, so that
-// moment demonstrably exists. Rather than keep guessing, watch both values
-// every frame and say so the first time either leaves its safe range.
+// Hook_CreateEdict co nang max_edicts len 4096 quanh loi goi SH_CALL cua no, nen
+// khoanh khac do CHUNG MINH DUOC la co that. Thay vi cu doan tiep, hay canh ca hai
+// gia tri moi frame va len tieng ngay lan dau mot trong hai roi khoi tam an toan.
 // --------------------------------------------------------------------------
-// Watch the exact structure the server dies on
+// Canh dung cai cau truc ma may chu chet tren no
 // --------------------------------------------------------------------------
 //
-// Every crash lands on sourcemod.2.l4d2.dll+0x13B63:
+// Moi lan sap deu roi vao sourcemod.2.l4d2.dll+0x13B63:
 //
 //     mov ecx, [sourcemod+0xAADFC]   ; PlayerManager::m_hooks.m_Head
-//     mov esi, [ecx + 4]             ; m_Head->next   <-- faults here
+//     mov esi, [ecx + 4]             ; m_Head->next   <-- loi o day
 //
-// m_hooks is a SourceHook List<IClientListener*>; its head is a 12-byte node
-// allocated once at DLL load, with next/prev pointing at itself when empty.
-// Something damages it long before the crash, and the crash only happens when
-// PlayerManager::MaxPlayersChanged next runs - so the fault address says
-// nothing about the culprit.
+// m_hooks la mot SourceHook List<IClientListener*>; dau danh sach la mot nut 12
+// byte cap phat mot lan luc nap DLL, voi next/prev tro vao chinh no khi rong.
+// Co thu gi do lam hong no TU RAT LAU truoc luc sap, va cu sap chi xay ra khi
+// PlayerManager::MaxPlayersChanged chay lan ke tiep - nen dia chi loi KHONG noi
+// len dieu gi ve thu pham.
 //
-// Bisecting the patches has bottomed out: every switch that CAN be turned off
-// has been, and the crash survives all of them. So stop asking which patch is
-// wrong and find WHEN the structure breaks instead. Checking the ring for
-// self-consistency once per frame turns a delayed crash into a timestamped
-// event next to whatever else the log shows at that instant.
+// Viec chia doi de tim ban va da cham day: moi cong tac CO THE tat deu da tat, ma
+// cu sap van song qua het. Vay thi thoi dung hoi ban va nao sai nua, ma di tim
+// KHI NAO cau truc do vo. Kiem tinh nhat quan cua vong danh sach mot lan moi frame
+// bien mot cu sap tri hoan thanh mot su kien co dau thoi gian, nam ngay canh moi
+// thu khac ma log ghi lai o dung khoanh khac do.
 static bool g_WarnedSM = false;
 // (khai bao o dau file)
 
@@ -3209,10 +3205,10 @@ static void CheckSMList() {
     }
 }
 
-// Release the reuse cooldown, but only while the networked range is genuinely
-// under pressure and at most a few times a second. Calling it unconditionally
-// every frame would recycle indices the instant anything dies and flood clients
-// with explicit deletes for no benefit.
+// Nha thoi gian cho tai dung, NHUNG chi khi dai co mang thuc su dang bi ep, va
+// nhieu lam vai lan mot giay. Goi vo dieu kien moi frame se lam tai dung chi so
+// ngay khoanh khac bat cu thu gi chet, va lam ngap client bang cac lenh xoa tuong
+// minh ma khong duoc loi gi.
 static int g_LastReuseTick = -1000;
 
 // (khai bao o dau file)
@@ -3220,13 +3216,13 @@ static int g_LastReuseTick = -1000;
 static void ReleaseReuseCooldown()
 {
     if (!g_ImmediateReuse || !engine || !g_num_edicts) return;
-    if (*g_num_edicts < NET_LIMIT - 192) return;          // plenty of room
+    if (*g_num_edicts < NET_LIMIT - 192) return;          // con rat nhieu cho
 
-    // Throttling is fine while there is room, but it hid the failure: every
-    // sample showed 844+ free slots, then the server died between samples.
-    // Error() inside ED_Alloc never returns, so a POST hook can never observe
-    // the failing call either - the only place left to look is right BEFORE
-    // each allocation, unthrottled once we are near the edge.
+    // Tiet che thi khong sao khi con cho, nhung chinh no da CHE GIAU cu hong: moi
+    // lan lay mau deu thay 844+ o trong, roi may chu chet GIUA hai lan lay mau.
+    // Error() ben trong ED_Alloc khong bao gio tra ve, nen mot POST hook cung khong
+    // the nao quan sat duoc loi goi that bai - cho duy nhat con lai de nhin la NGAY
+    // TRUOC moi lan cap phat, va bo tiet che khi da gan mep.
     int tick = gpGlobals ? gpGlobals->tickcount : 0;
     bool nearEdge = (g_MinFreeSeen < 64);
     if (!nearEdge) {
@@ -3234,26 +3230,27 @@ static void ReleaseReuseCooldown()
         g_LastReuseTick = tick;
     }
 
-    // The previous measurement produced a result that CONTRADICTS the machine
-    // code: num_edicts=2048 with 880 edicts flagged FL_EDICT_FREE, and the
-    // engine still said "no free edicts". ED_Alloc records every free edict it
-    // walks past (mov ebx,esi at 0x1E0209) and only errors when ebx stayed -1,
-    // so with 880 free that branch is unreachable.
+    // Phep do truoc do cho ra mot ket qua MAU THUAN voi ma may: num_edicts=2048
+    // voi 880 edict mang co FL_EDICT_FREE, ma engine van bao "no free edicts".
+    // ED_Alloc ghi nho MOI edict trong no di ngang qua (mov ebx,esi tai 0x1E0209)
+    // va chi bao loi khi ebx van con -1; nen voi 880 o trong thi nhanh do khong
+    // the toi duoc.
     //
-    // The one way both facts hold: the scan never runs. It starts at
+    // Chi co MOT cach de ca hai su that cung dung: vong quet KHONG HE CHAY. No bat
+    // dau tu
     //     esi = sv.GetMaxClients() + 1
-    // and 0x1E01E8 skips the whole loop when esi >= num_edicts. So the number
-    // that matters is not how many slots are free - it is how many are free
-    // INSIDE the window the engine actually looks at.
+    // va lenh tai 0x1E01E8 nhay qua ca vong lap khi esi >= num_edicts. Vay con so
+    // quan trong KHONG PHAI la co bao nhieu o trong - ma la co bao nhieu o trong
+    // NAM TRONG CUA SO ma engine thuc su nhin vao.
     //
-    // Call the engine's own GetMaxClients (RVA 0x134640 on the sv object) so we
-    // read exactly what ED_Alloc reads, instead of trusting gpGlobals.
-    // sv.GetMaxClients() (RVA 0x134640) turned out to be a one-line getter:
+    // Goi chinh GetMaxClients cua engine (RVA 0x134640 tren doi tuong sv) de doc
+    // DUNG cai ma ED_Alloc doc, thay vi tin vao gpGlobals.
+    // Hoa ra sv.GetMaxClients() (RVA 0x134640) chi la mot getter mot dong:
     //     mov eax, [ecx+0x104] ; ret
-    // so read the field directly - no call, no calling-convention risk.
+    // nen doc thang truong do - khong goi ham, khong rui ro ve quy uoc goi.
     //
-    // Worth noting: L4DToolZ writes sv[+0x180] (its slots_idx 0x60), a
-    // DIFFERENT field. Whether these two agree is exactly what is in question.
+    // Dang luu y: L4DToolZ ghi vao sv[+0x180] (slots_idx 0x60 cua no), mot truong
+    // KHAC HAN. Hai truong nay co dong y voi nhau khong, chinh la cau dang hoi.
     uint8_t* svObj = (uint8_t*)g_num_edicts - 0x214;
     int engMaxClients = *(int*)(svObj + 0x104);
     int toolzSlots    = *(int*)(svObj + 0x180);
@@ -3262,10 +3259,11 @@ static void ReleaseReuseCooldown()
     int n = (int)*g_num_edicts;
     if (n > NET_LIMIT) n = NET_LIMIT;
 
-    // Count through sv.edicts (0x10645774) - the pointer ED_Alloc itself walks -
-    // not gpGlobals->pEdicts. They are assumed equal because SV_AllocateEdicts
-    // assigns both, but that was never verified at runtime, and if they differ
-    // every free-slot number measured today was counted in the wrong array.
+    // Dem qua sv.edicts (0x10645774) - dung con tro ma chinh ED_Alloc duyet - chu
+    // KHONG phai gpGlobals->pEdicts. Hai cai duoc GIA DINH la bang nhau vi
+    // SV_AllocateEdicts gan ca hai, nhung dieu do chua bao gio duoc xac minh luc
+    // chay; va neu chung khac nhau thi moi con so "o trong" do duoc hom nay deu
+    // dang dem tren SAI mang.
     uint8_t* svEdicts  = g_edicts ? (uint8_t*)*g_edicts : NULL;
     uint8_t* glbEdicts = gpGlobals ? (uint8_t*)gpGlobals->pEdicts : NULL;
 
@@ -3293,16 +3291,16 @@ static void ReleaseReuseCooldown()
 }
 
 // --------------------------------------------------------------------------
-// Capture the exact moment ED_Alloc gives up
+// Bat DUNG khoanh khac ED_Alloc bo cuoc
 // --------------------------------------------------------------------------
 //
-// Sampling from a throttled hook never caught the failure: every sample showed
-// num_edicts=2012 (below the 2048 cap) with 861 free edicts in the scan window
-// - a state where ED_Alloc provably cannot fail. The wipe burst happens inside
-// a single frame, between samples.
+// Lay mau tu mot hook co tiet che thi khong bao gio bat duoc cu hong: moi lan lay
+// mau deu thay num_edicts=2012 (duoi tran 2048) voi 861 edict trong nam trong cua
+// so quet - mot trang thai ma ED_Alloc CHUNG MINH DUOC la khong the that bai. Dot
+// bung no cua wipe xay ra GON TRONG mot frame, tuc la giua hai lan lay mau.
 //
-// A POST hook on CreateEdict sees the one thing that matters: the call that
-// returned NULL. Log the full state right there, unthrottled.
+// Mot POST hook tren CreateEdict nhin thay dung MOT thu quan trong: chinh loi goi
+// da tra ve NULL. Ghi lai toan bo trang thai ngay tai do, khong tiet che.
 static int g_NullReports = 0;
 
 edict_t* Hook_CreateEdict_Post(int forceIndex)
@@ -3488,9 +3486,9 @@ void SamplePlugin::Hook_GameFrame(bool simulating)
                  "(expected %d) - num_edicts is free to grow past the limit ***",
                  (int)*g_max_edicts, NET_LIMIT);
     }
-    // LevelInit pins this once per map. If the engine writes it again later,
-    // SourceMod and every extension start seeing 4096 - and the pin was never
-    // verified to hold beyond that single moment.
+    // LevelInit ghim gia tri nay MOT LAN moi map. Neu ve sau engine ghi lai no,
+    // SourceMod va moi extension se bat dau nhin thay 4096 - ma viec ghim thi chua
+    // bao gio duoc xac minh la giu duoc qua khoi dung khoanh khac do.
     if (!g_WarnedGlob && g_PinGlobals && gpGlobals && gpGlobals->maxEntities != NET_LIMIT) {
         g_WarnedGlob = true;
         EL_LOG("[EdictBudget] *** gpGlobals->maxEntities=%d during a frame "

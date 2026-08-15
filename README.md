@@ -17,7 +17,7 @@ Không cần SourceMod. Không mở rộng giới hạn entity của engine.
 
 **Plugin này không ngăn được hoàn toàn `no free edicts`.**
 
-Nó làm ba việc: **thu hồi edict đúng lúc**, **cho phép tái dùng slot vừa giải phóng**, và **không cấp edict cho những lớp thực sự không dùng mạng**. Nếu bản thân map cần nhiều hơn 2048 entity **có mạng** cùng lúc thì không cứu được.
+Nó làm bốn việc: **thu hồi edict đúng lúc**, **cho phép tái dùng slot vừa giải phóng**, **không cấp edict cho những lớp thực sự không dùng mạng**, và **đổi lớp entity sang lớp rẻ hơn**. Nếu bản thân map cần nhiều hơn 2048 entity **có mạng** cùng lúc thì không cứu được.
 
 ### Nâng giới hạn thì làm được — nhưng nó không giải quyết vấn đề
 
@@ -36,14 +36,35 @@ Nên nâng trần không sai về kỹ thuật, nó chỉ **không giải quyế
 
 Chi tiết từng byte ghi trong `src/sample_mm.cpp`, khối đầu file.
 
-### Ví dụ một map không cứu được
+### Ví dụ một map suýt không cứu được — và cách nó được cứu
 
 ```
 312 point_spotlight + 312 spotlight_end + 312 beam = 936 edict (45,7%)
 chi rieng cho hieu ung anh sang. Ca ba lop deu PHAI co mang.
 ```
 
-Cách chữa duy nhất là chính người làm map giảm bớt hiệu ứng.
+Đoạn này trong bản trước ghi *"cách chữa duy nhất là người làm map giảm bớt hiệu ứng"*.
+**Không còn đúng nữa.**
+
+`point_spotlight` khi spawn **tự tạo thêm** `spotlight_end` + `beam` — 312 dòng trong
+lump hoá thành 936 edict. `beam_spotlight` làm cùng việc nhưng vẽ hoàn toàn phía client
+⇒ **1 edict**. Cơ chế `swap` đổi lớp ngay lúc tạo:
+
+```
+song 1954 -> 1330   giam dung 624   cho tho 93 -> 718 slot
+```
+
+Client vẫn nhận entity, vẫn vẽ tia sáng. Cái giá duy nhất là quầng sáng to gấp 6 vì
+`client.dll` ghi cứng `HaloScale = 60.0`.
+
+**Nhưng đây là ngoại lệ, không phải quy luật.** Quét 557 lớp × 16 map cho ra **đúng một
+cặp thay thế** như vậy. Lý do: hầu hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt.
+
+`env_sprite` là ví dụ rõ nhất — lớp đông nhất trong toàn bộ 16 map (**2539 cái**, riêng
+`the_hive` đã **2280**) — mà **không có cặp thay thế nào**, vì nó đã ở hệ số 1 và xuống
+0 là bất khả thi.
+
+Với những lớp đó thì câu cũ vẫn đúng: **cách chữa nằm ở người làm map.**
 
 ### Map nào thì cứu được
 
@@ -234,9 +255,12 @@ Do duoc, khop tuyet doi voi du doan:
 > `HaloScale 10` — nên **quầng sáng to gấp 6**. Không mất tia sáng, chỉ to hơn.
 
 > **Bảng này đã quét hết.** 557 lớp × 16 map cho ra **đúng một cặp dùng được**. Lý do:
-> hầu hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt. `env_sprite` (2280 cái trên
-> `the_hive`) **không có cặp thay thế** — nó đã ở hệ số 1, và xuống 0 là bất khả thi
-> vì `client.dll` chỉ tự dựng được đúng hai lớp `prop_physics`/`prop_physics_multiplayer`.
+> hầu hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt.
+>
+> `env_sprite` — **2539 cái trên 16 map**, đông nhất — không có cặp thay thế: nó đã ở
+> hệ số 1, và xuống 0 là bất khả thi, vì muốn tốn **0 edict phía máy chủ mà vẫn được
+> vẽ** thì client phải tự dựng entity từ lump của nó, mà `client.dll` chỉ làm việc đó
+> cho **đúng hai lớp** `prop_physics` / `prop_physics_multiplayer`.
 
 ## Cài đặt
 
@@ -244,11 +268,43 @@ Xem `configs/`. Chép `addons/` vào `left4dead2/`, khởi động lại, kiểm
 
 Mọi công tắc nằm trong `patches.txt` — **sửa file rồi khởi động lại là đủ, không cần build lại**.
 
-Cấu hình khuyến nghị:
+### Chạy quan sát trước (khuyến nghị)
+
+Máy chủ của bạn có map khác, số người chơi khác, chế độ chơi khác. Nên chạy vài ngày
+ở mức ít can thiệp nhất trước:
 
 ```
-wipeclear=2   freegate=1   noedict=1   trap=1
+noedict=1     manh nhat, mat mat bang 0 - bat ngay tu dau
+freegate=1    doi 1 byte engine, da do doi chung
+wipeclear=2   da do qua 5 lan wipe lien tiep
+trap=1        chi ghi log khi sap chet
+mapclear=1    CHI QUAN SAT, khong xoa gi
+heartbeat=300 ghi so lieu moi 5 phut
+swap=0        TAT luc dau
 ```
+
+Đọc `edictbudget.log` vài ngày, xem số entity thật của map mình, rồi mới bật `swap=2`.
+
+### Toàn bộ công tắc
+
+| công tắc | mặc định | nghĩa |
+|---|---|---|
+| `noedict` | 1 | đặt `EFL_SERVER_ONLY` cho lớp trong `noedict.txt` ⇒ không tốn edict |
+| `freegate` | 1 | bỏ thời gian chờ 1 giây trước khi tái dùng edict |
+| `wipeclear` | 2 | dọn entity lúc đội thua. `0` tắt · `1` quan sát · `2` dọn thật |
+| `swap` | 2 | đổi lớp theo `swap.txt`. `0` tắt · `1` quan sát · `2` đổi thật |
+| `swapmax` | 0 | trần số lần đổi. `0` = không giới hạn |
+| `mapclear` | 1 | chuyển màn. **Để `1`** — mức `2` chưa chứng minh được lợi ích |
+| `mapclearcarry` | 0 | **để `0`**. Bật `1` = xoá entity mang sang = **sập** |
+| `mapclearmax` | 100 | trần số lượt xoá của `mapclear=2` |
+| `trap` | 1 | in bản kiểm kê đầy đủ khi sắp hết edict |
+| `heartbeat` | 300 | giây giữa hai lần ghi số liệu. `0` tắt |
+| `loadprobe` | 8 | số frame lấy mẫu sau khi nạp map |
+| `logconsole` | 0 | `1` = in cả ra console máy chủ |
+| `stage.txt` | 1 | `0` = plugin nạp nhưng **nằm im hoàn toàn** |
+
+Nhóm `bigarray` / `snapshot` / `pinmax` / `pinglobals` / `markfree` **để nguyên `0`** —
+xem mục "Nâng trần lên 4096" bên dưới.
 
 ---
 
@@ -298,17 +354,69 @@ Khác biệt sinh tử với `noedict`: `noedict` vẫn tạo entity, vẫn ch�
 
 Hai lần đầu không tách được "xoá sai thứ" với "xoá quá nhiều". Lần thứ ba cho thấy vấn đề là **số lượng**. Nhưng ở mức an toàn (100) thì chỉ 9 cái thực sự được mang sang — lợi ích không đáng. **Để tắt trong bản phát hành.**
 
-### `point_spotlight` — 312 edict nằm chờ nhưng không lấy
+### Gỡ mạng bộ ba đèn — **đóng**, nhưng bài toán được giải bằng đường khác
 
-Phát hiện đáng chú ý: **Valve đã sửa lỗi này trong SDK 2013, nhưng L4D2 không có bản sửa.**
+Ý định ban đầu: đưa `point_spotlight` / `spotlight_end` / `beam` vào `noedict.txt` để
+lấy lại 936 edict. **Không làm được**, và có bằng chứng mã máy:
 
-`CPointSpotlight::Activate` trong SDK tự xoá entity cho "static beam". Bản L4D2 (`0x1018F3F0`) **dừng ngay sau `SetThink(NULL)`** — `UTIL_Remove` không hề xuất hiện. Entity tắt think rồi ngồi giữ edict vĩnh viễn.
+| lớp | hỏng điều kiện | bằng chứng |
+|---|---|---|
+| `spotlight_end` | 1 | `vtable[9]` → `0x1082377C` = `CSpotlightEnd`, **có SendTable riêng** |
+| `beam` | 1 | `vtable[9]` → `0x107DAF94` = `CBeam`, **có SendTable riêng** |
+| `point_spotlight` | 5 | `1018E5C9`: `spotlight_end->SetOwnerEntity(point_spotlight)`, mà `m_hOwnerEntity` (+0x20C) là **SendProp** của `DT_BaseEntity` |
 
-Trên một map cộng đồng: `312 point_spotlight + 312 spotlight_end + 312 beam` = **936/2048 edict (45,7%)** từ một cơ chế duy nhất.
+Cơ chế đằng sau điều kiện 5, đọc từ `SendProxy_EHandleToInt` @`101CCFE0`:
 
-Và nó **an toàn về mặt client** — `UpdateTransmitState` ép `FL_EDICT_DONTSEND`, tức client chưa từng nhận entity này.
+```asm
+and edx, 0xfff     ; chi so 12 bit
+shl eax, 0xb       ; serial dich 11 bit
+or  eax, edx       ; <- 12 bit nhet vao truong 11 bit => tran sang serial
+```
 
-Vẫn **không bật**, vì một rủi ro chưa xác minh: `spotlight_end` giữ `m_hOwnerEntity` (một SendProp) trỏ ngược về `point_spotlight`. Xoá spotlight để lại handle treo, và chưa rõ client xử lý thế nào.
+Nhân tiện bác bỏ luôn một nỗi lo cũ: **`CBaseHandle` biểu diễn được chỉ số ≥ 2048**
+(`NUM_ENT_ENTRY_BITS = 12`, mask `0xFFF`, tầm 0–4095). **Giới hạn 11 bit là của giao
+thức mạng, không phải của handle phía máy chủ.** Đừng lẫn hai thứ.
+
+**Nhưng 936 edict đó vẫn lấy lại được** — bằng `swap`, không phải bằng gỡ mạng. Đổi
+`point_spotlight` (hệ số 3) sang `beam_spotlight` (hệ số 1) ngay lúc tạo. Xem mục
+cơ chế 4.
+
+### `env_sprite` — **đóng hẳn**, không có đường nào
+
+Lớp đông nhất đã đo được, **2539 cái trên 16 map**:
+
+```
+the_hive    2280   m3 730 | m2 639 | m5 439 | m1 236 | m4 236
+anemoia      174
+chernobyl     85
+```
+
+Valve dùng tối đa **162**, trung bình **30** — tức `the_hive_m3` một mình đã gấp **4,5
+lần** mức cao nhất của Valve.
+
+- **Gỡ mạng: không.** `vtable[9]` → `0x10823D14` = ServerClass riêng `CSprite`, có 11
+  SendProp riêng (`m_flSpriteScale`, `m_nBrightness`, `m_flFrame`…). Client **cần**
+  những dữ liệu đó để vẽ.
+- **Đổi lớp: không.** Nó **đã ở hệ số 1** — 730 dòng trong lump ra đúng 730 edict lúc
+  chạy. Muốn tốn **0 edict phía máy chủ mà vẫn được vẽ** thì client phải tự dựng entity
+  từ lump của chính nó, mà `client.dll` chỉ làm việc đó cho **đúng hai lớp**
+  `prop_physics` / `prop_physics_multiplayer`
+  (`C_PhysPropClientside::ParseAllEntities` @`0x10176950`, đúng hai lệnh `strcmp`).
+- `env_glow` là **bí danh tuyệt đối**: cùng vtable, cùng ctor, cùng datamap. Đổi không
+  thay đổi một byte nào.
+
+Còn lại duy nhất là xoá khỏi lump — mất hình. Chưa cài.
+
+### `prop_physics` / `prop_physics_multiplayer` — **cấm xoá phía máy chủ**
+
+`client.dll` tự dựng `C_PhysPropClientside` từ lump **của chính nó**, không nhận từ máy
+chủ. `CPhysicsProp::Spawn` @`0x101A5F40` và `C_PhysPropClientside::Initialize`
+@`0x10176410` là **bản soi gương của nhau**: mỗi prop do đúng **một** bên giữ, quyết
+định bởi `m_iPhysicsMode` và cvar `sv_pushaway_clientside_size`.
+
+Xoá phía máy chủ ⇒ mất phần bên đó phụ trách. **Không phải mỏ**: 1132/2983 prop do client
+giữ, nhưng xoá chúng khỏi lump tiết kiệm **0 edict** — `DispatchSpawn` trả `-1` khi thấy
+`EFL_KILLME` và `CleanupDeleteList()` chạy ngay trong vòng lặp.
 
 ---
 
