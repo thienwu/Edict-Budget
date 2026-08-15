@@ -57,12 +57,13 @@ song 1954 -> 1330   giam dung 624   cho tho 93 -> 718 slot
 Client vẫn nhận entity, vẫn vẽ tia sáng. Cái giá duy nhất là quầng sáng to gấp 6 vì
 `client.dll` ghi cứng `HaloScale = 60.0`.
 
-**Nhưng đây là ngoại lệ, không phải quy luật.** Quét 557 lớp × 16 map cho ra **đúng một
-cặp thay thế** như vậy. Lý do: hầu hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt.
+**Nhưng đây là ngoại lệ, không phải quy luật.** Quét 557 lớp của `server.dll`, đối chiếu
+với 16 map của ba chiến dịch đã đo, cho ra **đúng một cặp thay thế** như vậy. Lý do: hầu
+hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt.
 
-`env_sprite` là ví dụ rõ nhất — lớp đông nhất trong toàn bộ 16 map (**2539 cái**, riêng
-`the_hive` đã **2280**) — mà **không có cặp thay thế nào**, vì nó đã ở hệ số 1 và xuống
-0 là bất khả thi.
+`env_sprite` là ví dụ rõ nhất — lớp đông nhất đã đo được (**2539 cái**, riêng `the_hive`
+đã **2280**) — mà **không có cặp thay thế nào**, vì nó đã ở hệ số 1 và xuống 0 là bất
+khả thi.
 
 Với những lớp đó thì câu cũ vẫn đúng: **cách chữa nằm ở người làm map.**
 
@@ -92,9 +93,22 @@ Loại nặng vì thứ **không cần gửi xuống client** — decal, đèn t
 
 ### Chỉ phân tích tĩnh, CHƯA chạy thật
 
-16 map của bốn chiến dịch (`the_hive`, `anemoia`/backroom, `chernobyl`, và map gốc)
-đã được đọc lump và tính chi phí edict bằng `tools/bsp_cost.py`. **Đó là đọc file,
-không phải chạy server.**
+Đã đọc lump và tính chi phí edict bằng `tools/bsp_cost.py` cho **đúng ba chiến dịch**:
+
+```
+the_hive     5 map
+anemoia      6 map   (thu muc "backroom")
+chernobyl    5 map
+------------------
+            16 map
+```
+
+**Đó là đọc file, không phải chạy server.**
+
+⚠️ **Con số "16 map" xuất hiện nhiều lần trong tài liệu này KHÔNG phải một mẫu rộng.**
+Nó chính là ba chiến dịch trên, không hơn. Ba chiến dịch do cùng một kiểu tác giả
+cộng đồng làm, nặng về trang trí. Kết luận rút ra từ đó **có thể không đúng** với map
+gốc của Valve, map finale, map Versus, hay map của tác giả khác.
 
 ### Vì vậy
 
@@ -254,10 +268,11 @@ Do duoc, khop tuyet doi voi du doan:
 > ⚠️ Cái giá: `client.dll` ghi cứng kích thước halo = 60.0, còn map thường đặt
 > `HaloScale 10` — nên **quầng sáng to gấp 6**. Không mất tia sáng, chỉ to hơn.
 
-> **Bảng này đã quét hết.** 557 lớp × 16 map cho ra **đúng một cặp dùng được**. Lý do:
-> hầu hết lớp đã ở hệ số 1 sẵn, không còn gì để cắt.
+> **Bảng này đã quét hết phần quét được.** 557 lớp của `server.dll`, đối chiếu với 16
+> map của ba chiến dịch đã đo, cho ra **đúng một cặp dùng được**. Lý do: hầu hết lớp đã
+> ở hệ số 1 sẵn, không còn gì để cắt.
 >
-> `env_sprite` — **2539 cái trên 16 map**, đông nhất — không có cặp thay thế: nó đã ở
+> `env_sprite` — **2539 cái**, đông nhất trong ba chiến dịch đó — không có cặp thay thế: nó đã ở
 > hệ số 1, và xuống 0 là bất khả thi, vì muốn tốn **0 edict phía máy chủ mà vẫn được
 > vẽ** thì client phải tự dựng entity từ lump của nó, mà `client.dll` chỉ làm việc đó
 > cho **đúng hai lớp** `prop_physics` / `prop_physics_multiplayer`.
@@ -383,12 +398,14 @@ cơ chế 4.
 
 ### `env_sprite` — **đóng hẳn**, không có đường nào
 
-Lớp đông nhất đã đo được, **2539 cái trên 16 map**:
+Lớp đông nhất trong ba chiến dịch đã đo, **2539 cái**:
 
 ```
 the_hive    2280   m3 730 | m2 639 | m5 439 | m1 236 | m4 236
 anemoia      174
 chernobyl     85
+------------------
+16 map      2539   <- day la TAT CA du lieu, khong phai mot mau rong
 ```
 
 Valve dùng tối đa **162**, trung bình **30** — tức `the_hive_m3` một mình đã gấp **4,5
