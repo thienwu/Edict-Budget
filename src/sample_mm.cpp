@@ -1,252 +1,26 @@
 // ===========================================================================
-// edictbudget - giu server L4D2 khong chet vi "ED_Alloc: no free edicts"
-// ===========================================================================
-//
-// ===========================================================================
-//  TAC GIA - DOC TRUOC
+//  edictbudget - giu so entity DANG SONG duoi tran 2048 edict cho L4D2.
 //
 //  Toan bo ma nguon nay do AI viet: Claude (Anthropic), chay trong Claude Code.
-//  Khong phai mot phan, khong phai "co AI ho tro" - la TOAN BO: thiet ke, doc
-//  nguoc server.dll/engine.dll, viet ma, do dac, va cac ghi chu ban dang doc.
+//  Nguoi dung la nguoi VAN HANH may chu that: dat bai toan, chay thu, chup log,
+//  va bac bo nhieu ket luan sai cua AI. Chi tiet o NOTICE.
 //
-//  Nguoi dung la nguoi VAN HANH may chu that: ho dat bai toan, chay thu, chup
-//  log, phat hien loi, va bac bo nhieu ket luan sai cua AI. Nhieu doan trong file
-//  nay ghi ro "SAI, da sua" chinh la vi the.
+//  Giay phep: GPLv3. Xem LICENSE.
 //
-//  Noi ro dieu nay vi hai ly do:
-//    1. Ai doc ma nen biet no den tu dau de tu quyet dinh muc do tin tuong.
-//    2. Nhieu ket luan o day rut ra tu doc nguoc nhi phan, khong phai tu tai lieu
-//       chinh thuc. Chung deu kem dia chi ham va doan lenh de kiem lai duoc.
-//       Cai gi khong xac minh duoc thi ghi thang la KHONG XAC DINH.
+//  ------------------------------------------------------------------------
+//  TAI LIEU DAY DU nam trong docs/ - khong lap lai o day:
 //
-//  Giay phep: GPLv3. Xem file LICENSE.
-// ===========================================================================
+//    docs/00-tong-quan.md    nhiem vu, gioi han 11 bit, so lieu 3 chien dich,
+//                            file cau hinh, huong dan build
+//    docs/01-co-che.md       noedict, freegate, wipeclear, swap
+//    docs/02-mapclear.md     mapclear + vi sao KHONG duoc xoa cai mang sang
+//    docs/03-huong-4096.md   toan bo nhom cong tac 4096 - DA TAT, dung bat
+//    docs/04-nonetkill.md    doi ten classname trong lump - DA LOAI BO
+//    docs/04-cef.md          CEF - da go khoi ke hoach
+//    docs/05-do-dac.md       log, kiem ke, bay, heartbeat, loadprobe
 //
-// NHIEM VU: giu so entity DANG SONG duoi tran 2048.
-// KHONG nang tran - chi so entity trong giao thuc Source rong 11 bit (toi da
-// 2047), nen entity CO MANG nam o chi so >=2048 se bi client giai ma sai.
-//
-// !!  GIOI HAN - PHAI DOC:
-//   Ban va nay KHONG NGAN DUOC HOAN TOAN "ED_Alloc: no free edicts".
-//   No chi lam hai viec: thu hoi edict DUNG LUC, va go edict khoi nhung lop
-//   THUC SU KHONG DUNG MANG. Neu ban than map can nhieu hon 2048 entity CO
-//   MANG cung luc thi khong co cach nao cuu - do la tran cua giao thuc, khong
-//   phai cua ban va.
-//   Vi du do duoc: mot map cong dung 312 point_spotlight + 312 spotlight_end
-//   + 312 beam = 936 edict (45,7%) cho rieng hieu ung anh sang. Ca ba lop deu
-//   phai co mang. Ban va khong dong toi duoc.
-//
-// ---------------------------------------------------------------------------
-// BA CO CHE
-//
-// 1. wipeclear - don khi doi survivor thua
-//    Luc wipe, game CO don entity nhung don MUON. Trinh tu that:
-//      CDirector::Restart -> RestartRound(slot 178)
-//                              |-- hoi sinh player      <== an het edict O DAY
-//                              |-- CleanUpMap(slot 179) <== moi don, DA MUON
-//    Moc vao DAU RestartRound, lam nua "don" cua CleanUpMap truoc doan ngon kia:
-//      UTIL_Remove(ngoai preserve list) -> CleanupDeleteList()
-//      -> AllowImmediateEdictReuse()
-//    roi de game chay tiep; CleanUpMap tu dung lai map tu entity lump.
-//    Chi don khi co mission_lost dang cho (co mot-lan). Khong co cong thi no
-//    don ngay luc t=1.00 khi map vua nap va PHA MAP.
-//    DO DUOC: 5 wipe lien tiep (map thuong), 3 wipe lien tiep (c6m1_riverbank).
-//
-// 2. freegate - cho phep tai dung slot vua giai phong
-//    ED_Alloc TU CHOI tai dung mot edict trong 1 GIAY sau khi no duoc giai
-//    phong. Wipe xoa roi tao lai hang tram entity trong CUNG mot khoanh khac,
-//    nen khong cai nao qua noi cong do => chet trong khi con ~999 slot trong.
-//    Doi mot byte trong engine.dll: jae -> jmp. Dinh vi bang QUET CHU KY.
-//    An toan nho sv_useexplicitdelete (mac dinh bat) - Valve thiet ke no THAY
-//    CHO thoi gian cho nay.
-//    DO DUOC (doi chung): cung tinh huong num_edicts=2048 + ~999 slot trong,
-//    freegate=0 -> CHET, freegate=1 -> chay tiep binh thuong.
-//
-// 3. noedict - khien lop khong dung mang KHONG LAY edict
-//    CBaseEntity::PostConstructor xet bit 9 cua m_iEFlags (EFL_SERVER_ONLY):
-//      = 0 -> AddNetworkableEntity    -> dai 0-2047, TON edict
-//      = 1 -> AddNonNetworkableEntity -> dai 2049-4095, KHONG ton edict
-//    Dai 2049-4095 (2047 o) la THIET KE GOC cua engine. Tran no chi in canh
-//    bao roi tra handle khong hop le - KHONG giet server.
-//    Thay vtable slot 29 (+0x74) cua rieng CLight/CDecal, bat bit roi goi ham
-//    goc. Khong va byte, khong dung engine.dll.
-//    DO DUOC: mot map tu CHET o 2048 edict -> nap duoc voi num_edicts=1178.
-//
-// ---------------------------------------------------------------------------
-// KET QUA DO DUOC TREN BA CHIEN DICH CANG NHAT
-//
-// Tran engine: max_edicts = 2048. Cot "EDICT du kien" doc tu lump 0 cua BSP bang
-// tools\bsp_cost.py; cot "do that" la num_edicts luc chay tren may chu.
-// Cong thuc:  EDICT = (entity trong lump) - (lop trong noedict.txt)
-//                     + 2 x point_spotlight co spawnflags&1
-//
-// 1. chernobyl  (5 map) - chua ch04_pripyat03, map khoi nguon cua ca du an
-//      map              lump   noedict go   EDICT du kien   tong lump
-//      ch01_jupiter     1532       316         1216             1532
-//      ch02_pripyat01   2204      1138         1067             2205
-//      ch03_pripyat02   1686       869          816             1685
-//      ch04_pripyat03   2246      1039         1212             2251
-//      ch05_pripyat04    940       301          648              949
-//
-//    PHEP KIEM NGUOC:
-//      ch04_pripyat03 truoc khi co noedict: CHET o 2048 luc nap.
-//      Cong thuc du doan (co noedict): 1212. Do that tren may chu: 1178.
-//      Sai lech +34, tuc 2,9%. Cong thuc viet ra SAU, khop voi su co xay ra TRUOC.
-//
-//    !! GIOI HAN PHAI NHO - DUNG BIEN CON SO NAY THANH PHAN QUYET:
-//      Cot "tong lump" KHONG PHAI so entity cung song mot luc. No chi la so dong
-//      trong lump. Thuc te entity duoc KICH HOAT DAN:
-//        - weapon_*_spawn tu UTIL_Remove chinh no ngay sau khi sinh vu khi
-//        - StartDisabled chua kich hoat
-//        - point_template sinh muon
-//        - Director sinh dan theo tien trinh choi
-//      ch02_pripyat01 co "tong lump" 2205 nhung KHONG HE CHET, ke ca truoc khi co
-//      noedict. ch04_pripyat03 o 2251 thi chet. Hai con so chi cach nhau 46 =>
-//      khong co nguong sach nao o day.
-//      Sai so do duoc, LAN NAO CUNG THUA:
-//        the_hive m3  du doan 1688 -> do that 1592  (-96)
-//        the_hive m4  du doan 2067 -> do that 1955  (-112)
-//        pripyat03    du doan 1212 -> do that 1178  (-34)
-//      => Dung cong thuc lam CAN TREN va BANG XEP HANG. Muon biet map co chet
-//         khong thi phai DO: loadprobe (8 frame dau) va heartbeat (moi 5 phut).
-//
-// 2. the_hive  (5 map)
-//      map   EDICT du kien   ghi chu
-//      m1         966
-//      m2        1834        639 env_sprite - KHONG go duoc, xem duoi
-//      m3        1688        80 point_spotlight (he so 3)
-//      m4        2067        VUOT TRAN. 312 point_spotlight = 936 edict
-//      m5        1343
-//      Do that tren may chu, m4: dinh num_edicts=1955, trong=0, cho tho 93 slot.
-//      Sau khi bat swap: song 1954 -> 1330. Cho tho 93 -> 718 slot.
-//      m3 sau khi bat swap: song 1591 -> 1431.
-//
-// 3. anemoia / backroom  (6 map)
-//      map           lump   noedict go   EDICT du kien
-//      arcade        1246       433          812
-//      kitty         2954      1444         1509   <- noedict CUU map nay
-//      party         2198       399         1798      964 prop_dynamic
-//      poolrooms      921       306          640
-//      poolrooms2     914       313          626
-//      reality       1351       488          862
-//      kitty la bang chung manh nhat cho noedict: khong co no thi map ~2953 edict,
-//      vuot tran 900 slot, chet chac luc nap.
-//
-// TONG KET GIAM DUOC BAO NHIEU (so entity duoc dat EFL_SERVER_ONLY / doi lop):
-//      noedict   anemoia kitty   1444 entity  |  chernobyl ch02  1138
-//                chernobyl ch04  1039         |  chernobyl ch03   869
-//                anemoia reality  488         |  the_hive m4      465
-//                the_hive m3      443
-//      Chi MOT truong hop da CHUNG MINH duoc la "khong co no thi chet":
-//        ch04_pripyat03 - chet that o 2048 truoc khi co noedict, sau do nap duoc
-//        voi num_edicts=1178. Cac map khac chi la con so lump lon, CHUA CHUNG MINH.
-//      swap      the_hive m4   624 edict (312 x 2)
-//                the_hive m3   160 edict (80 x 2)
-//                the_hive m5     8 edict (chi 4/12 cai co spawnflags&1)
-//                anemoia      ~26 edict/map (chi poolrooms co 13 cai) - khong dang
-//
-// RUI RO CUA `swap` DA DUOC DINH LUONG (15/08) - NHO HON NHIEU SO VOI LO NGAI BAN DAU:
-//   `beam_spotlight` giu FCAP_ACROSS_TRANSITION con `point_spotlight` thi bo, nen
-//   ban dau tuong so entity mang sang tang manh. Do lai bang PVS that:
-//     m4 -> m5 :  +0   (312 beam_spotlight cua m4 KHONG cai nao trong PVS landmark)
-//     m3 -> m4 : +48   (48 point_spotlight nam trong PVS cua landmark_m4 tren m3)
-//   Danh sach chuyen man that: m3->m4 = 22 entity, m4->m5 = 32. Tran engine 512.
-//   Doi 48 edict lay 784 => KHONG SUA.
-//
-//   Vi sao truoc do uoc nham 739/1051: server.dll co 54 ham ObjectCaps khac nhau,
-//   31 trong so do cung `and eax,0xFFFFFFFD` (bo co) nhung khuon byte khac
-//   CPointEntity nen bi bo sot. Rieng the_hive: CSprite@1009A5D0 (env_sprite 236),
-//   CBeam@10081580 (beam 312), CSpotlightEnd@101DEEB0 (spotlight_end 312) deu bo co.
-//
-//   CChangeLevel::BuildChangeList @101FF060 KHONG duyet gEntList. No duyet
-//   UTIL_EntitiesInPVS(landmark) @10209BC0 - chi entity trong PVS cua info_landmark
-//   (1-4% ban do) - VA co dong `cmp dword [esi+0x28],0 ; je` bo qua entity KHONG CO
-//   EDICT. => noedict MIEN NHIEM HOAN TOAN voi chuyen man.
-//   Vuot 512 goi tier0!Warning (KHONG phai Error), giu 512 muc dau, bo phan du.
-//
-// CHO PLUGIN CHUA XU LY DUOC:
-//      the_hive m2  = 1834, thu pham 639 env_sprite.
-//      anemoia party = 1798, thu pham 964 prop_dynamic.
-//      Ca hai lop deu CO SendTable rieng (CSprite, CDynamicProp) nen KHONG go mang
-//      duoc, va deu he so 1 nen swap vo dung. Can co che khac - dang nghien cuu
-//      huong sua entity lump ngay trong Hook_LevelInit (xem RewriteLump).
-//      KHI NAO CO CONG THUC CHUNG CHO anemoia THI GHI THEM VAO DAY.
-//
-// ---------------------------------------------------------------------------
-// FILE CAU HINH  (left4dead2\addons\edictbudget\)
-//   stage.txt      0 = nam im hoan toan  |  1 = hoat dong
-//   patches.txt    cong tac tung phan, doi xong chi khoi dong lai server
-//                  wipeclear = 0 tat / 1 chi quan sat / 2 don that
-//   noedict.txt    lop bat EFL_SERVER_ONLY. Truoc khi them lop moi phai qua
-//                  du 6 dieu kien - ghi trong chinh file do.
-//   wipekeep.txt   lop GIU THEM khi wipeclear don. DE TRONG moi dung: o wipe,
-//                  entity bi xoa se DUOC DUNG LAI tu entity lump, nen giu them
-//                  chi lam hep bien do.
-//   mapkeep.txt    lop KHONG DUOC DON khi chuyen man (chi dung khi mapclear>=2).
-//                  Nguoc voi wipekeep: o chuyen man, xoa nham la MAT VINH VIEN.
-//
-// BUILD
-//   SOURCE_ENGINE PHAI = 15 (LEFT4DEAD2) theo cach danh so cua Metamod.
-//   Build nham 11 (TF2) lam lech moi chi so vtable, SH_CALL goi nham ham engine.
-//
-// ---------------------------------------------------------------------------
-// HUONG 4096: NANG GIOI HAN LA LAM DUOC. GIOI HAN 11 BIT MOI LA KHONG THE.
-//
-// Phai noi ro hai chuyen khac nhau, dung gop lam mot:
-//
-//   (a) NANG SO EDICT len 4096 hoac cao hon  ->  LAM DUOC, ma o duoi day.
-//   (b) Dat entity CO MANG o chi so >= 2048  ->  KHONG THE, va khong bao gio
-//       lam duoc bang cach va server.dll/engine.dll.
-//
-// Ly do (b) khong the: chi so entity duoc ma hoa trong goi tin bang truong
-// 11 bit (toi da 2047). Do la dinh dang GOI TIN, nam o ca hai dau day - client
-// va server. Va server khong lam client hieu duoc chi so 2048; client se giai
-// ma ra mot chi so khac han. Muon sua thi phai sua ca client.dll cua tung
-// nguoi choi, tuc khong kha thi.
-//
-// => Cho trong dai 2048-4095 CHI dung duoc cho entity KHONG CO MANG.
-//    Va engine DA CO san co che cho viec do: EFL_SERVER_ONLY + nua tren cua
-//    m_EntPtrArray (xem noedict o duoi). Khong can va byte nao.
-//
-// ---------------------------------------------------------------------------
-// CAC BYTE NANG GIOI HAN - GHI LAI DE DOI CHIEU, MAC DINH TAT HET
-//
-//   bigarray   SV_AllocateEdicts cap 4096 edict thay vi 2048.
-//              Chu ky trong engine.dll:
-//                  B8 00 08 00 00   mov eax, 0x800      <- 2048
-//                  89 86 18 02 00 00
-//                  A3 ?? ?? ?? ??
-//              Ghi de 4 byte tai m+1 bang so o muon cap (EXT_LIMIT = 4096).
-//              Dat 8192 cung chay - mang cap phat theo so nay.
-//
-//   snapshot   Doi 7 cho truy cap hai bang m_pPackedData / m_pSerialNumber
-//              sang bo dem 4096 o. BAT BUOC di kem bigarray: mang 4096 edict
-//              voi bang snapshot 2048 o thi TE HON la khong lam gi - phan
-//              edict thua se ghi de len bo nho ben canh.
-//              7 chu ky dang  8B 84 B1 9C ...  ->  8B 04 B5 <dia chi moi>
-//
-//   pinmax     LevelInit ghim sv.max_edicts ve 2048.
-//   pinglobals LevelInit ghim gpGlobals->maxEntities ve 2048.
-//              Hai cai nay giu TRAN CUA ENGINE o 2048 de bo cap phat cua
-//              engine khong tu dat entity len dai cao. Thieu chung thi
-//              num_edicts leo qua 2047 va entity CO MANG tran len dai cao
-//              - dung dieu (b) noi tren.
-//
-//   markfree   LevelInit dong dau FL_EDICT_FREE len cac o 2048-4095.
-//
-// ---------------------------------------------------------------------------
-// VI SAO VAN TAT HET
-//
-//   1. Nhom nay LAM HONG VONG HOI SINH LUC WIPE - tuc pha luon wipeclear,
-//      thu duy nhat dang giai quyet duoc dot bung lon nhat.
-//   2. No khong giai duoc bai toan goc. Cho trong o dai cao chi chua duoc
-//      entity khong co mang, ma viec do noedict lam duoc bang duong CHINH
-//      THUC cua engine, khong can va byte.
-//   3. Do thuc te: bat bigarray+snapshot ma thieu pinmax/pinglobals thi
-//      num_edicts = 2060, entity NGAU NHIEN tran len tren 2047 - mat on dinh.
-//
-//   Ma van con de doi chieu va de ai muon do lai thi co san. Khong duoc bat
-//   trong ban chay.
+//  Moi ket luan trong docs/ deu kem dia chi ham va doan lenh de kiem lai duoc.
+//  Cai gi khong xac minh duoc thi ghi thang la KHONG XAC DINH.
 // ===========================================================================
 
 #include "sample_mm.h"
@@ -297,16 +71,8 @@ static uint32_t* g_max_edicts = NULL;
 static uint32_t* g_edicts     = NULL;
 static uint32_t* g_edict_states = NULL;
 
-// HAI CAU HOI KHAC NHAU, va gop chung lam mot da tung la loi that:
-//   g_BigArrayOn      - SV_AllocateEdicts da duoc noi rong len 4096 chua?
-//   g_EngineArray4096 - co AN TOAN de DAT thu gi o tren 2047 khong?
-//
-// Cau thu hai con doi bang snapshot phai duoc doi cho nua. Cau thu nhat, tu no,
-// bat buoc ta phai ghim sv.max_edicts ve 2048 moi lan nap map: mang 4096 ma de
-// max_edicts o 4096 thi ED_Alloc se noi them entity CO MANG binh thuong vao chi
-// so 2048+, ma khong client nao dia chi hoa duoc (giao thuc chi mang 11 bit),
-// nen chung ton tai va phan hoi nhung khong bao gio co model.
-// Dieu kien ghim ma dat theo co GOP thi mang noi rong xuat xuong ma thieu day an toan.
+// g_BigArrayOn = mang da noi rong 4096 chua | g_EngineArray4096 = co AN TOAN
+// de dat thu gi tren 2047 khong. HAI cau hoi khac nhau - xem docs/03-huong-4096.md
 static bool g_BigArrayOn      = false;
 static bool g_EngineArray4096 = false;
 
@@ -348,22 +114,7 @@ static FILE* OpenPluginFile(const char* name, const char* mode) {
     return fopen(path, mode);
 }
 
-// ==========================================================================
-// GHI LOG RA FILE RIENG
-// ==========================================================================
-//
-// META_LOG chi day ra console cua server. Neu may chu khong bat ghi console.log
-// thi moi so lieu do duoc deu mat. Nen toan bo log cua plugin ghi thang vao
-// file rieng:
-//
-//     left4dead2ddons\edictbudget\edictbudget.log
-//
-// Moi dong co dau thoi gian. File mo o che do noi tiep, khong ghi de.
-// fflush sau moi dong de neu server chet dot ngot van con du log den phut cuoi
-// - dung luc can nhat.
-//
-// CONG TAC logconsole = 1 thi in ra CA console (mac dinh 0).
-// --------------------------------------------------------------------------
+// Ghi log ra file rieng addons/edictbudget/edictbudget.log. Xem docs/05-do-dac.md
 static FILE* g_LogFile   = NULL;
 static bool  g_LogOpened = false;
 // logconsole: 1 = in CA ra console server. Mac dinh 0 - chi ghi file.
@@ -430,23 +181,8 @@ static bool g_PatchSnapshot    = true;
 // kieu nay ma khoi dong rat vung - chinh dieu do dua no vao dien tinh nghi.
 static bool g_PatchDetour      = true;
 
-// Yeu cau engine BO thoi gian cho 1 giay truoc khi mot edict vua giai phong
-// duoc cap phat lai.
-//
-// ED_Alloc tu choi tai su dung mot edict cho toi 1 giay sau khi no duoc giai
-// phong. Ma mot lan wipe giai phong hang tram entity roi tao lai chung trong
-// CUNG MOT FRAME, nen khong cai nao du dieu kien, va engine buoc phai noi them
-// edict moi - do chinh la thu lam can kiet mot map dang o muc 2012/2047.
-//
-// IVEngineServer::AllowImmediateEdictReuse() la cau tra loi cua chinh Valve cho
-// viec nay ("Tells the engine we can immdiately re-use all edict indices even
-// though we may not have waited enough time", eiface.h:345). Convar di kem
-// sv_useexplicitdelete - mac dinh BAT - lam engine bao cho client biet entity cu
-// da bien mat TRUOC khi chi so cua no duoc tai dung, va do dung la thu ma thoi
-// gian cho kia dang bao ve.
-//
-// Huong nay danh dung vao co che hong that su. Phan tach chi bao gio cung chi
-// them bien do; con cai nay xoa bo NHU CAU phai co bien do.
+// Bo thoi gian cho 1 giay truoc khi mot edict vua giai phong duoc cap lai.
+// Day la co che chinh chua duoc bai toan. Xem docs/01-co-che.md muc freegate.
 static bool g_ImmediateReuse   = true;
 
 // Cho phep tai su dung edict ngay, va thang vao ED_Alloc.
@@ -459,15 +195,7 @@ static bool g_PatchFreeGate    = true;
 static int  g_MinFreeSeen      = 999999;
 static int  g_EdgeLines        = 0;
 
-// Dem so lan cap phat edict trong MOT frame.
-//
-// Mau cuoi cung truoc khi chet luon la num_edicts=2012 voi ~904 slot trong -
-// trang thai ma ED_Alloc KHONG THE bao loi (2012 < 2048 nen no cap moi).
-// De toi duoc nhanh loi thi trong khoang giua hai lan lay mau (<0.25s) phai
-// co ~940 lan cap phat: 36 lan day num_edicts len 2048, cong 904 lan chiem
-// het slot trong. Neu dung, wipe la mot dot bung no ~940 entity CUNG LUC va
-// map that su vuot 2048 o dinh - luc do moi huong "tai su dung slot" deu vo
-// nghia vi khong con gi de tai su dung.
+// Dem so lan cap phat edict trong MOT frame. Xem docs/05-do-dac.md
 static int  g_AllocThisFrame   = 0;
 static int  g_MaxBurst         = 0;
 
@@ -481,19 +209,8 @@ static bool g_PinMax     = true;   // sv.max_edicts        -> 2048
 static bool g_PinGlobals = true;   // gpGlobals->maxEntities -> 2048
 static bool g_MarkFree   = true;
 
-// WIPECLEAR: don thuc the o dau CTerrorGameRules::RestartRound (vtable slot 178),
-// truoc vong hoi sinh player. Xem khoi giai thich day du gan InstallWipeClear().
-//
-// BA TRANG THAI, khong phai hai - de moi buoc thu chi doi MOT thu:
-//   0 = TAT HOAN TOAN. Khong moc vtable, khong nghe su kien. No-op that su,
-//       dung lam moc doi chieu.
-//   1 = CHI QUAN SAT. Moc vtable + nghe su kien, log day du moc thoi gian va
-//       so slot, nhung KHONG xoa mot entity nao. Rui ro gan bang khong, va no
-//       tra loi cau con treo: tin hieu thua ban TRUOC hay SAU RestartRound,
-//       va num_edicts cham 2048 o doan nao.
-//   2 = DON THAT. Lam nua "don" cua CleanUpMap ngay dau RestartRound.
-//
-// Mac dinh 0. Doi trong patches.txt, khong can build lai.
+// wipeclear: don thuc the o dau CTerrorGameRules::RestartRound (vtable slot 178),
+// TRUOC vong hoi sinh nguoi choi. Xem docs/01-co-che.md muc wipeclear.
 static int g_WipeClear = 0;
 
 // Bay ED_Alloc: ghi 0xE9 (JMP) de len 8 byte nhanh loi trong engine.dll roi dung
@@ -505,34 +222,8 @@ static int g_WipeClear = 0;
 // Khi wipeclear da chay dung thi bay chi con de chan doan - tat duoc.
 static bool g_PatchTrap = true;
 
-// ---------------------------------------------------------------------------
-// HAI CONG TAC XU LY THUC THE KHONG DUNG MANG
-//
-// Van de: entity khong can gui cho client VAN chiem edict trong dai 0-2047 -
-// dai ma giao thuc 11 bit danh cho thu phai gui. Do la lang phi thuan.
-// Khong go duoc edict cua entity dang song (DetachEdict() la private, chi
-// destructor goi duoc). Nen chi con hai duong:
-//
-//   nonetkill = 1   XOA HAN chung sau khi map nap xong.
-//                   Duyet gEntList, UTIL_Remove lop khop serveronly.txt,
-//                   roi CleanupDeleteList() de tra edict ngay.
-//                   Duoc: tra slot ve dai 0-2047 vinh vien.
-//                   Mat: mat luon chuc nang cua entity do.
-//
-//   nonethigh = 1   DAY len dai 2048-4095 thay vi xoa.
-//                   Dung lai duong Hook_CreateEdict san co (cap phat xuong tu
-//                   4095) - xem khoi chu thich tai ham do.
-//                   !!  CAN bigarray=1 VA snapshot=1, neu khong g_ExtReady=false
-//                   va no khong lam gi ca.
-//                   !!  Muc 0-AAA: huong nay TUNG gay crash trong phep A/B sach
-//                   nhat cua du an. Bat lai la co y chap nhan rui ro do de do lai.
-//
-// Ca hai deu doc danh sach lop tu serveronly.txt (quy tac khop: dong ket thuc
-// '_' = khop tien to, con lai = khop chinh xac).
-//
-// !!  KHONG bat ca hai cung luc - chung mau thuan. Neu bat ca hai, nonetkill
-// thang va nonethigh bi bo qua (co canh bao trong log).
-// ---------------------------------------------------------------------------
+// Hai cong tac xu ly thuc the khong dung mang: nonetkill (DA LOAI BO) va noedict.
+// Khac biet sinh tu giua chung o docs/01-co-che.md va docs/04-nonetkill.md
 static bool g_NoNetKill = false;
 static bool g_NoNetHigh = false;
 
@@ -547,29 +238,9 @@ static int  g_MapClear = 0;
 // Tran so entity mapclear duoc xoa moi lan chuyen man. 0 = khong gioi han.
 // Dung de TIM NGUONG: hai lan xoa >1300 deu chet cam.
 static int  g_MapClearMax = 0;
-// 1 = CHI xoa entity co FCAP_ACROSS_TRANSITION. 0 = xoa tat ca (mac dinh, hanh vi cu).
-//
-// !!! DE MAC DINH 0. CHE DO 1 DA DUOC THU 09:44 14/08 VA GIET SERVER NGAY.
-//
-//   MAPCLEAR #1 (che do 2, chi-mang-sang=1): tong 1551 | mang sang 295
-//   | go 200 (mang sang 200), giu 156, bo qua vi khong mang sang 1153, cham tran 42
-//   -> "Server is hibernating" + khoi dong lai. Khong ED_Alloc, khong assert.
-//
-// Luat dung, giai thich duoc CA BA lan chet (thay cho luat "nguong 1300" da sai):
-//     cap 100  -> trong do    9 cai mang sang -> SONG
-//     >1300    -> trong do ~270 cai mang sang -> CHET
-//     carry=1  -> trong do  200 cai mang sang -> CHET
-//   KHONG PHAI SO LUONG GIET. LA XOA CAI MANG SANG GIET.
-//   "Nguong 1300" chi la trung hop: xoa cang nhieu thi cang vo phai nhieu cai mang sang.
-//
-// Co che: hook chay POST nen PrepareLevelChange goc DA lap xong danh sach chuyen man.
-// Entity co FCAP_ACROSS_TRANSITION nam san trong danh sach do. Xoa sau khi danh sach
-// da lap => danh sach tro vao vung da giai phong => sap khi engine xu ly chuyen man.
-// Hook PRE cung khong cuu duoc: engine van phai doc chinh nhung entity ay de lap danh sach.
-//
-// He qua: chi cai mang sang moi ton edict o map sau, ma cai mang sang thi khong duoc
-// dung vao => MAPCLEAR VE NGUYEN TAC KHONG GIAI QUYET DUOC "m3 -> m4".
-// Giu cong tac nay lai chi de ghi lai thi nghiem, KHONG phai de bat.
+// 1 = CHI xoa entity co FCAP_ACROSS_TRANSITION. 0 = xoa tat ca (mac dinh).
+// !! DE MAC DINH 0. Che do 1 da duoc thu 14/08 va GIET SERVER trong 12 giay.
+// Xem docs/02-mapclear.md - co bang ba lan chet va co che POST-hook.
 static int  g_MapClearCarryOnly = 0;
 // Con tro ServerClass ma GetServerClass() tra ve khi lop KHONG co SendTable rieng
 // (tuc la dung chung DT_BaseEntity). Xem cong an toan 3 trong InstallNoEdict().
@@ -584,17 +255,9 @@ static int  g_MapClearCarryOnly = 0;
 //        0x53860000 + 0x7D78A8 = 0x540378A8   <- dung, chi la chua doi hang so.
 //    Cung loai loi voi vu chu ky mapclue bi tu choi vi prologue chua mat na.
 #define DT_BASEENTITY_RVA 0x7D78A8u
-// Ghi so edict trong N frame dau sau khi nap map, de bat DINH TAM THOI. 0 = tat.
-//
-// Vi sao can: `MOC CO SO` ghi tai ServerActivate, luc do nhieu entity CHUA spawn xong.
-// Vi du point_spotlight tao spotlight_end + beam trong Activate()/Think(), tuc la SAU
-// ServerActivate. Do la ly do m4 ghi num_edicts=1463 luc do trong khi dem tu lump ra
-// 2067 - phan chenh xuat hien o may frame ke tiep.
-// Ngoai ra ~35 lop weapon_*_spawn tao entity that roi UTIL_Remove chinh no; UTIL_Remove
-// hoan den cuoi frame nen moi cai chiem 2 edict cung luc trong frame nap.
-// Ca hai gia thuyet deu chi kiem duoc bang cach lay mau TUNG FRAME.
-// swap: doi lop entity thanh lop re hon luc tao. Xem khoi giai thich o InstallSwap().
-// 0 = tat | 1 = CHI QUAN SAT (dem, khong doi) | 2 = doi that
+// loadprobe: ghi so edict trong N frame dau sau khi nap map, de bat dinh tam
+// thoi. MOC CO SO ghi tai ServerActivate, luc do nhieu entity CHUA spawn xong.
+// Xem docs/05-do-dac.md
 static int  g_Swap = 0;
 // Tran so lan doi. 0 = khong gioi han. Dung de thu vai chuc cai truoc khi doi het.
 static int  g_SwapMax = 0;
@@ -606,72 +269,9 @@ static int  g_LoadProbePeak = 0;
 // Chi ghi log, khong dong vao entity nao. Xem HeartbeatSample().
 static int  g_Heartbeat = 0;
 
-// ---------------------------------------------------------------------------
-// nonetkill: DOI TEN classname TAI CHO trong entity lump, o LevelInit.
-//
-// CO CHE (da xac minh tren binary):
-//   classname la  -> CEntityFactoryDictionary::Create (0x10206A40)
-//                    -> DevWarning("Attempted to create unknown entity type %s!")
-//                    -> tra NULL
-//                 -> MapEntity_ParseEntity (0x101198F0): DevWarning("Can't init %s"),
-//                    KHONG deref NULL
-//                 -> MapEntity_ParseAllEntities (0x1011A600): bo qua NULL
-//   => entity im lang khong duoc spawn, KHONG ton edict, KHONG ton han muc nao.
-//   Khop tai lieu Valve: "Entities... not recognized by the server do not create
-//   edicts... they are simply not spawned."
-//
-// XXX HAI DUONG GIET SERVER - PHAI TRANH:
-//   0x1011A6C0  khoi khong mo bang '{'      -> tier0!Error  (import 0x105C1224)
-//   0x10119943  khoi thieu key "classname"  -> tier0!Error
-//   => TUYET DOI khong xoa khoi, khong doi do dai chuoi. CHI ghi de gia tri.
-//
-// CACH DOI: thay DUNG MOT ky tu dau thanh '~'.
-//   infodecal -> ~nfodecal
-//   Bao dam cung do dai, va khong classname nao cua L4D2 bat dau bang '~'
-//   (557 classname da liet ke, khong cai nao).
-//
-// ###########################################################################
-// XXX DANH SACH MAC DINH: RONG. DUNG THEM 'light*' HAY 'infodecal' VAO DAY.
-// ###########################################################################
-// Mac dinh cung tay { infodecal, light, light_spot } la SAI:
-//   -> ch04_pripyat03 HIEN THI SAI ANH SANG.
-//
-// NGUYEN NHAN GOC - nonetkill khac nonethigh o mot diem sinh tu:
-//   nonethigh : entity VAN DUOC TAO, VAN chay Spawn()/Activate(), chi la khong
-//               cap edict. Moi TAC DUNG PHU van xay ra. -> anh sang DUNG.
-//   nonetkill : entity KHONG BAO GIO TON TAI. Spawn()/Activate() khong chay.
-//               -> MAT SACH tac dung phu.
-//
-// => nonetkill SAI VE BAN CHAT voi moi entity ma GIA TRI CUA NO NAM O TAC DUNG
-//    PHU LUC SPAWN. Da xac minh tren binary (output/binscan/step_light.py):
-//
-//   CLight::Spawn 0x1010FA10  (dung chung cho light / light_spot /
-//                              light_directional; light_environment = jmp toi day)
-//     [esi+0x140] m_iszName == 0  -> UTIL_Remove(this)      // den "tro", tu xoa
-//     [esi+0x140] m_iszName != 0  -> neu m_iStyle >= 32:
-//                                      engine->LightStyle(m_iStyle, pattern)
-//                                      (0x107F7698 = g_pEngineServer, vt +0xA0)
-//     Den CO TEN = den BAT/TAT DUOC. VRAD nuong no thanh mot lightstyle rieng
-//     luc compile; entity luc chay la thu DUY NHAT dat trang thai dau cho lop
-//     lightmap do. Cat entity -> LightStyle() khong chay -> lop do giu mac dinh
-//     -> SANG SAI. Den KHONG ten thi da tu xoa san, cat cung KHONG duoc gi.
-//
-//   CDecal::Spawn 0x102362A0 / CDecal::Activate 0x10236D10
-//     Spawn:    m_nTexture < 0 hoac (deathmatch && lowprio) -> UTIL_Remove
-//               con lai -> SONG. Server dedicated khong phai deathmatch => SONG.
-//     Activate: khong targetname -> jmp StaticDecal() (dan decal roi TU XOA)
-//     => infodecal CHUA TUNG giu edict lau dai. Cat no tiet kiem GAN NHU BANG 0,
-//        doi lay TOAN BO decal cua map. Lo von nang.
-//     (infodecal do VScript tao thi sinh luc chay, khong qua lump -> khong dinh.)
-//
-// !!  Muon giam edict cho ho light/infodecal thi dung NONETHIGH, khong phai day.
-//
-// Doc tu nonetkill.txt neu co (moi dong mot classname). Truoc khi them BAT CU
-// lop nao, phai tra loi duoc: "Spawn()/Activate() cua no co lam gi khong?"
-// Neu co -> KHONG duoc cat.
-// XXX KHONG them lop nhom "song lau dai" (logic_auto, func_nav_attribute_region,
-//    info_gamemode, info_survivor_position...).
-// ---------------------------------------------------------------------------
+// nonetkill: doi ten classname TAI CHO trong entity lump o LevelInit.
+// DA LOAI BO - no giet luon Spawn()/Activate(), lam mat decal va sai anh sang.
+// Giu lai vi co the huu ich cho lop khac. Xem docs/04-nonetkill.md
 #define KILL_MAX 64
 static char g_KillList[KILL_MAX][40];
 static int  g_KillCount = 0;
@@ -757,31 +357,7 @@ static const char* RewriteLump(const char* lump, int* outHits) {
     return buf;
 }
 
-// ---------------------------------------------------------------------------
-// CEF - DA GO KHOI KE HOACH (07/08). Ghi lai de khong ai them lai nham.
-//
-// Y dinh ban dau: dua CEF vao chinh plugin nay, vi CEF goc (`mmscef-code`)
-// VON LA Metamod plugin chu khong phai SourceMod extension.
-//
-// NGUOI DUNG CHOT: KHONG chep CEF vao day. Ma nguon CEF goc chi de THAM KHAO,
-// no KHONG ho tro day du L4D2 - can thiet ke lai neu muon co co che nay.
-//
-// Ly do ky thuat:
-//   CEF goc dung `PEntityOfEntIndex` de tim slot trong. Tren L4D2, L4D da BO
-//   ham do khoi IVEngineServer, nen `engine_wrappers.h` thay bang phep tinh
-//   con tro thuan - LUON khac NULL => vong lap chay toi maxEntities roi bail.
-//   Tuc CEF goc la mot NO-OP tren L4D2. No "on dinh" vi no khong lam gi ca.
-//   => Chep nguyen xi sang day la chep mot thu khong chay.
-//
-// Neu ve sau can co che nay, phai THIET KE LAI cho L4D2:
-//   - dung `edict_t::IsFree()` that, khong dung PEntityOfEntIndex
-//   - va DO TRUOC: hien chua co so lieu nao cho thay co dinh nguy hiem luc
-//     choi thuong. Do duoc 07/08: slot cao nhat tung dung = 682/2048, luon du
-//     ~950 cho. Moi dot bung do duoc deu nam o nhanh wipe, va `wipeclear` da
-//     xu ly.
-//   - va nho rui ro muc 0-AA: tac gia CEF tu canh bao "PROBABLY UNSTABLE...
-//     random crashing", va crash sourcemod+0x13b63 xuat hien dung khi ep chi so.
-// ---------------------------------------------------------------------------
+// CEF - DA GO KHOI KE HOACH. Xem docs/04-cef.md truoc khi ai do them lai.
 
 static void LoadPatchSwitches() {
     FILE* f = OpenPluginFile("patches.txt", "r");
@@ -939,15 +515,8 @@ static void AuditDump() {
     }
 }
 
-// --------------------------------------------------------------------------
-// Kiem ke MOI lop ma map tao ra, du ta co doi cho no hay khong.
-//
-// Chon danh sach cho phep bang truc giac thi KHONG AN THUA: tap than trong
-// logic_/math_/ai_ chi giai phong duoc 10 o tren c1m1_hotel, vi L4D2 dat phan
-// lon logic cua map trong VScript chu khong phai trong entity. Muon chon co ich
-// thi phai biet map THUC SU sinh ra nhung gi va bao nhieu cai, sap theo so
-// luong, de nhung nhom phia may chu lon nhat lo ra ngay.
-// --------------------------------------------------------------------------
+// Kiem ke MOI lop map tao ra. Chon danh sach cho phep bang truc giac khong an
+// thua - phai biet map thuc su sinh gi. Xem docs/05-do-dac.md
 #define CENSUS_MAX 192
 #define CENSUS_TRIP 1900          // do ra truoc khi cham buc tuong 2047
 static bool g_Tripped = false;
@@ -1066,51 +635,10 @@ static void PatchFreetime() {
     EL_LOG("[EdictBudget] freetime: repointed %d references to a %d-entry table", n, EXT_LIMIT);
 }
 
-// ==========================================================================
-// Doi hai bang theo-entity cua CFrameSnapshotManager ra khoi doi tuong engine
-// ==========================================================================
-//
-// Day la ban va lam cho chi so tren 2047 song duoc, ma khong co no thi khong.
-//
-// CFrameSnapshotManager giu hai bang co dinh 2048 muc noi tuyen ben trong no:
-//
-//     +0x009C  CPackedEntity* m_pPackedData  [2048]
-//     +0x209C  int            m_pSerialNumber[2048]
-//
-// Bay lenh danh chi so vao chung, khong lenh nao kiem bien - engine khong co ly
-// do phai kiem, vi chi so edict goc khong bao gio vuot 2047. Do do ghi tai chi
-// so i >= 2048 se roi vao bat cu thu gi nam ke sau:
-//
-//     m_pPackedData[i]   voi i >= 2048  ->  m_pSerialNumber[i - 2048]
-//                        (AM THAM lam hong serial cua mot entity THAP - day
-//                         chinh la thu khien EHANDLE giai ma ra con tro rac va
-//                         sap ngay lan giai tham chieu ke tiep)
-//     m_pSerialNumber[i] voi i >= 2993  ->  sv, doi tuong CGameServer
-//                        (giu trang thai map va con tro worldmodel; hong roi thi
-//                         lan kiem tra lump BSP ke tiep doc phai rac va engine
-//                         bao "Cannot load corrupted map")
-//
-// Vay khong co dai con nao an toan: cap phat len tren thi hong serial, cap phat
-// xuong duoi thi hong sv. Ca hai bang deu PHAI doi sang cho co du 4096 muc.
-//
-// Moi lan truy cap deu la dang SIB 7 byte "[base + index*4 + disp32]" va viet
-// lai thanh "[index*4 + abs32]" DUNG BANG DO DAI, nen day la sua tai cho, khong
-// can trampoline, khong co rui ro lech bien lenh:
-//
-//     8B BC B1 9C 00 00 00   mov edi,[ecx+esi*4+0x9C]   -> 8B 3C B5 <packed>
-//     8B 84 B1 9C 20 00 00   mov eax,[ecx+esi*4+0x209C] -> 8B 04 B5 <serial>
-//     8B 84 91 9C 00 00 00   mov eax,[ecx+edx*4+0x9C]   -> 8B 04 95 <packed>
-//     8B 8C 91 9C 20 00 00   mov ecx,[ecx+edx*4+0x209C] -> 8B 0C 95 <serial>
-//     8B 94 B9 9C 00 00 00   mov edx,[ecx+edi*4+0x9C]   -> 8B 14 BD <packed>
-//     89 94 B9 9C 00 00 00   mov [ecx+edi*4+0x9C],edx   -> 89 14 BD <packed>
-//     89 94 B9 9C 20 00 00   mov [ecx+edi*4+0x209C],edx -> 89 14 BD <serial>
-//
-// Quet dich nguoc toan bo .text xac nhan day la BAY lan truy cap chi-so-co-ty-le
-// duy nhat o ca hai do doi; cac tham chieu +0x9C khac thuoc ve doi tuong khong
-// lien quan (ghi kich thuoc word, bien cuc bo tinh theo esp).
-//
-// Sot du mot cai thoi la engine se doc mot bang trong khi ghi vao bang kia, nen
-// so luong nay da duoc kiem chung va ban va la DUOC-TAT-CA-HOAC-KHONG.
+// Doi hai bang theo-entity cua CFrameSnapshotManager ra khoi doi tuong engine.
+// Day la ban va lam cho chi so tren 2047 song duoc. BAY lan truy cap, phai sua
+// DU CA BAY - thieu mot la engine doc mot bang trong khi ghi bang kia.
+// Bang do doi va ly do o docs/03-huong-4096.md
 
 static uint32_t* g_PackedTable = NULL;   // 4096 muc
 static uint32_t* g_SerialTable = NULL;   // 4096 muc
@@ -1140,26 +668,8 @@ static bool PatchSnapshotTables() {
         }
     }
 
-    // Hai bang nay cung phai duoc xoa mot lan moi map, NHUNG KHONG duoc lam
-    // bang cach sua ham xoa cua engine.
-    //
-    // Mot ban truoc da viet lai lenh memset ben trong
-    // CFrameSnapshotManager::LevelChanged. Viec do lam hong mot extension khac:
-    //
-    //   [SM] Unable to load extension "cutlrbtreefix.ext":
-    //        Failed to create_inline: CFrameSnapshotManager::LevelChanged
-    //
-    // cutlrbtreefix cai mot inline hook vao DUNG ham do, tim ham bang chu ky, va
-    // may byte ta sua lam chu ky khong con khop - the la extension am tham ngung
-    // nap, va may chu mat mot ban va engine that su ma no dang phu thuoc.
-    //
-    // Xoa bang CUA CHINH TA tu Hook_LevelInit cho ket qua y het, ma de nguyen ham
-    // do khong doi mot byte nao. Engine van xoa mang noi tuyen gio da bo khong
-    // cua no, ton 8KB memset moi map va khong hai gi.
-    //
-    // LUAT CHUNG rut ra tu cai gia nay: chi va nhung gi BUOC PHAI va, va uu tien
-    // lam viec trong hook cua chinh minh hon la sua mot ham ma nguoi khac co the
-    // dang moc vao.
+// Hai bang phai duoc xoa moi map, NHUNG KHONG duoc sua ham xoa cua engine:
+// lam vay tung pha chu ky cua extension cutlrbtreefix. Xem docs/03-huong-4096.md
 
     g_PackedTable = (uint32_t*)_aligned_malloc(EXT_LIMIT * sizeof(uint32_t), 16);
     g_SerialTable = (uint32_t*)_aligned_malloc(EXT_LIMIT * sizeof(uint32_t), 16);
@@ -1186,29 +696,8 @@ static bool PatchSnapshotTables() {
 }
 
 
-// ==========================================================================
-// Bo thoi gian cho 1 giay truoc khi tai su dung edict
-// ==========================================================================
-//
-// ED_Alloc chi nhan mot edict da giai phong khi:
-//     comiss  2.0f, freetime[i]      ; freetime < 2.0 (giai phong dau map)
-//     ja      lay_no
-//     fsub    freetime[i]            ; curtime - freetime
-//     fcompi  1.0
-//     jae     lay_no                 ; hoac da qua 1 GIAY   <-- va o day
-//
-// Do do wipe (xoa roi tao lai hang tram entity trong CUNG mot frame) khong co
-// edict nao du dieu kien, engine buoc phai cap moi, num_edicts leo toi tran.
-// Da do thuc te: num_edicts=2012 voi 906-918 edict DANG TRONG ma engine van
-// bao "ED_Alloc: no free edicts". Day dung la loi engine Source 2009 ma tac
-// gia CEF mo ta: "running out of edicts when you have 1000 free".
-//
-// Doi mot byte 73 -> EB (jae -> jmp) lam moi edict trong deu dung lai duoc
-// ngay. Dich nhay giu nguyen, khong doi do dai lenh, khong trampoline.
-//
-// An toan: engine da co san sv_useexplicitdelete (mac dinh BAT) - khi mot chi
-// so duoc tai dung som, no gui lenh xoa tuong minh xuong client truoc. Do
-// chinh la co che Valve thiet ke thay cho thoi gian cho nay.
+// Bo thoi gian cho 1 giay truoc khi tai su dung edict - doi MOT byte tai
+// 0x101E022A: jae -> jmp. Xem docs/01-co-che.md muc freegate.
 static void PatchFreetimeGate() {
     // fld1 ; fxch st(1) ; fcompi st(1) ; fstp st(0) ; jae
     const char* sig  = "\xD9\xE8\xD9\xC9\xDF\xF1\xDD\xD8\x73";
@@ -1225,26 +714,8 @@ static void PatchFreetimeGate() {
 }
 
 
-// ==========================================================================
-// Bay tai CHINH nhanh loi cua ED_Alloc
-// ==========================================================================
-//
-// Moi phep do dat tai IVEngineServer::CreateEdict deu MU: bo dem burst khong
-// thay frame nao co >=32 lan cap phat, va hook chua bao gio duoc goi cho lan
-// that bai. Nghia la ED_Alloc duoc goi tu duong noi bo cua engine.
-//
-// Cho duy nhat con nhin duoc la chinh nhanh loi:
-//     1E0247  85 DB              test ebx, ebx
-//     1E0249  0F 88 84 00 00 00  js   1E02D3      -> bao "no free edicts"
-//     1E024F  ...                                 -> tai su dung ebx
-//
-// Tam 8 byte do bang mot JMP 5 byte toi stub cua ta + 3 NOP. Stub ghi log roi
-// dung lai dung hai nhanh goc. Day la duong LANH - chi chay khi engine sap
-// chet - nen rui ro thap hon han detour tren duong nong.
-//
-// ebx = chi so edict trong CUOI CUNG ma vong quet nhin thay (-1 = khong thay
-// cai nao). Do chinh la con so can biet: engine co that su khong thay slot
-// trong nao khong, trong khi ta dem duoc ~912.
+// trap: bay tai CHINH nhanh loi cua ED_Alloc, in ban kiem ke truoc khi chet.
+// Chi ghi log, khong doi hanh vi. Xem docs/05-do-dac.md
 static uint8_t* g_AllocFailStub = NULL;
 static int g_AllocFailReports = 0;
 
@@ -1270,18 +741,7 @@ static void __cdecl LogAllocFail(int ebxVal)
              g_max_edicts ? (int)*g_max_edicts : -1,
              freeCount);
 
-    // Kiem ke TAI DUNG THOI DIEM NAY: cai gi dang chiem 2048 slot?
-    //
-    // Moi lan kiem ke truoc day deu dem luc BINH YEN va cho ra buc tranh khac
-    // han - chinh no lam ca hai ngay di sai huong. Day la thoi diem duy nhat
-    // co nghia: engine vua xac nhan khong con mot slot trong nao.
-    //
-    // Lan truoc bang nay KHONG in ra duoc: tieu de duoc log SAU vong lap, va
-    // vong lap goi ham ao GetClassName() tren 2048 edict trong luc engine dang
-    // hap hoi nen cham phai con tro hong va chet truoc khi kip in. Nay:
-    //   - in tieu de TRUOC
-    //   - boc SEH quanh moi lan doc mot edict
-    //   - in tung dong ngay khi gom xong, khong doi toi cuoi
+// Kiem ke tai thoi diem het edict: cai gi dang chiem 2048 slot. docs/05-do-dac.md
     if (gpGlobals && gpGlobals->pEdicts && g_num_edicts && g_AllocFailReports == 1) {
         int n = (int)*g_num_edicts;
         if (n > EXT_LIMIT) n = EXT_LIMIT;
@@ -1400,42 +860,9 @@ static bool PatchEngineAllocSize() {
     return true;
 }
 
-// engine.dll co hai ham tra chi so gan giong het nhau:
-//   RVA 0x1E0030  IndexOfEdict      - kiem bien theo num_edicts
-//   RVA 0x1E0060  IndexOfEdictInfo  - kiem bien theo max_edicts
-// Bo cuc ca hai:
-//   +20  cmp esi, [gioi han]
-//   +26  jl  +41              ; trong tam -> tra ve chi so
-//   +28  push "NUM_FOR_EDICT[INFO]: bad pointer"
-//   +33  call Error           ; TU VONG - khong bao gio tra ve
-//   +41  mov eax, esi ; ret
-//
-// Ta CO Y giu max_edicts o 2048 de bo cap phat cua chinh engine nam trong dai
-// 11 bit co the noi mang. Nhung mang thuc su la 4096 muc, nen mot edict hoan
-// toan hop le o chi so 2048+ se lam vap hai phep kiem nay va engine bo cuoc voi
-// "NUM_FOR_EDICTINFO: bad pointer".
-//
-// Doi lenh nhay co dieu kien thanh vo dieu kien se bo qua loi goi tu vong ma van
-// tra ve dung chi so - thu duy nhat mat di la phep kiem bien, ma no dang kiem
-// theo mot gioi han chinh ta co tinh khai thap hon su that.
-//
-// Neo theo prologue cua ham la MOT SAI LAM: no tim duoc hai cho va am tham bo sot
-// phan con lai. Co BON cho bo cuoc nhu vay nam trong BA ham co prologue khac nhau,
-// va mot trong nhung cho bi bo sot lai duoc chinh ED_Alloc goi de xoa mot edict
-// vua cap - nen moi entity duoc doi cho deu vap phai no ngay khi bat phan tach.
-//
-// Chuoi thong bao loi moi la cai neo dang tin. Moi cho bo cuoc deu duoc toi bang
-// mot lenh nhay co dieu kien nam ngay truoc "push <chuoi>", nen tim cac tham chieu
-// toi chuoi la tim ra HET, bat ke hinh dang ham ra sao:
-//
-//     3B 35 <gioi han>  cmp esi, [max_edicts]
-//     7C xx             jl  <trong tam>       <- doi thanh EB, cung dich
-//     68 <chuoi>        push "NUM_FOR_...: bad pointer"
-//     E8 <rel>          call Error            <- khong bao gio tra ve
-//
-// Doi jl thanh jmp giu nguyen byte dich, nen luong dieu khien roi dung vao noi ma
-// truong hop trong-tam le ra da roi vao. Khong mat gi ngoai mot phep kiem theo
-// gioi han ma ta co tinh khai thap.
+// Hai ham tra chi so cua engine kiem bien theo num_edicts / max_edicts, va co
+// BON cho bo cuoc nam trong BA ham prologue khac nhau. Neo theo chuoi loi chu
+// KHONG neo theo prologue. Xem docs/03-huong-4096.md
 static int PatchAbortsFor(uint8_t* base, size_t size, const char* text) {
     size_t tlen = strlen(text);
 
@@ -1452,15 +879,7 @@ static int PatchAbortsFor(uint8_t* base, size_t size, const char* text) {
         if (base[i] != 0x68) continue;
         if (*(uint8_t**)(base + i + 1) != str) continue;
 
-        // Co HAI bo cuc, va chi tim moi bo cuc dau la thu da lam mot ban truoc
-        // bo sot han EDICT_NUM:
-        //
-        //   7C xx       jl trong-tam         <- lenh canh nam lui 2 byte
-        //   68 <chuoi>  push "..."
-        //
-        //   7C xx       jl trong-tam         <- lenh canh nam lui 3 byte
-        //   56          push esi             (mot tham so printf phu)
-        //   68 <chuoi>  push "..."
+// Co HAI bo cuc cua lenh canh (lui 2 byte va lui 3 byte). docs/03-huong-4096.md
         size_t at;
         if (base[i - 2] == 0x7C)                                   at = i - 2;
         else if (base[i - 3] == 0x7C && base[i - 1] >= 0x50
@@ -1509,28 +928,8 @@ static void PatchIndexOfEdictBounds() {
     }
 }
 
-// Nhanh "ep chi so" cua ED_Alloc kiem tinh hop le theo num_edicts, ma con so do
-// chi dem NHUNG GI DA CAP RA cho toi luc nay - nen mot chi so ep buoc 2048+ luon
-// bi tu choi. No phai duoc so voi mot con so lon hon.
-//
-// Nuoc di hien nhien - tro no sang max_edicts roi nang con so do len 4096 trong
-// suot loi goi - la mot cai BAY. num_edicts chi tang chu khong bao gio giam, va
-// tran cua no la max_edicts; nen chi mot frame co max_edicts == 4096 la du de
-// num_edicts vuot 2048 VINH VIEN. Sau do TakeTickSnapshot duyet len toi num_edicts
-// trong khi do day mot mang 2048 muc tren ngan xep, ghi tran qua stack cookie, va
-// tien trinh chet khong minidump, khong mot dong nao tren console.
-//
-// So voi mot gia tri tuc thoi thuan tuy thi xoa bo han cua so nguy hiem do:
-// khong mot bien toan cuc nao cua engine bi thay doi, nen khong gi quan sat duoc
-// mot gioi han bi thoi phong.
-//
-//     3B 05 <abs32>   cmp eax, [num_edicts]   (6 byte)
-//  -> 3D 00 10 00 00  cmp eax, 4096           (5 byte) + nop
-//
-// Nhanh noi-them o ben duoi van doc max_edicts, ma con so do van bi ghim o 2048 -
-// nen cap phat thong thuong khong the leo qua dai co the noi mang. Chi mot chi so
-// bi ep TUONG MINH moi cham toi nua tren, va nhanh do van kiem FL_EDICT_FREE
-// truoc khi giao o ra.
+// Nhanh ep-chi-so cua ED_Alloc kiem theo num_edicts nen luon tu choi 2048+.
+// So voi mot hang so thay vi nang max_edicts. Xem docs/03-huong-4096.md
 static void PatchForcedIndexCheck() {
     const char* sig  = "\x55\x8B\xEC\x8B\x45\x08\x56\x85\xC0\x78\x00\x3B\x05\x00\x00\x00\x00\x7C";
     const char* mask = "xxxxxxxxxx.xx....x";
@@ -1581,63 +980,10 @@ static void* __cdecl Detour_CreateEntityByName(const char* cls, int forceIndex) 
     return r;
 }
 
-// ---------------------------------------------------------------------------
 // WIPECLEAR - don thuc the o DAU chuoi restart, TRUOC vong hoi sinh player.
-//
-// CTerrorGameRules::CleanUpMap() (RVA 0x2DDB10) da tu lam dung viec nay:
-//     UTIL_Remove(moi thu ngoai preserve list)
-//       -> CleanupDeleteList() -> AllowImmediateEdictReuse()
-//       -> MapEntity_ParseAllEntities()
-// Van de la no chay MUON. Trinh tu that (da kiem bang capstone tren server.dll
-// cua chinh server nay, 9.130.288 byte, ImageBase 0x10000000):
-//
-//   CDirector::Restart          0x2700D0
-//     m_bRestarting = 1         0x27045F
-//     RestartRound()            0x2704C4   <- vtable slot 178
-//       VONG HOI SINH PLAYER    0x2E0794..0x2E08A3   <== tieu edict O DAY
-//       FIRE round_start_pre_entity        0x2E08CE
-//       CleanUpMap()            0x2E08DF   <== game moi don O DAY
-//     m_bRestarting = 0         0x2705DF
-//
-// Moi thu truoc 0x2E08DF chay khi map VAN giu du 2012 entity / 35 slot trong.
-// Khoi nay lam nua "don" cua CleanUpMap ngay dau RestartRound roi de game chay
-// tiep binh thuong - CleanUpMap se thay gan nhu khong con gi de xoa, va
-// MapEntity_ParseAllEntities van dung lai day du tu entity lump.
-//
-// QUAN TRONG - day vua la BAN VA vua la PHEP DO:
-//   log "slot trong truoc -> sau" tra loi luon cau hoi con treo:
-//     +~1100 slot va het crash  => lo nam TRUOC CleanUpMap, ban va dung
-//     +~1100 slot ma van crash  => lo nam SAU khi dung lai xong; luc do bai
-//                                  toan tro ve muc 0-KET-LUAN (map that su
-//                                  can 2012/2047, khong co lang phi de thu hoi)
-//
-// Giu nguyen tap "preserve" CUA CHINH GAME (doc runtime tu RVA 0x7ACE40) nen
-// ngu nghia y het CleanUpMap - chi khac THOI DIEM. Do la lua chon co y: doi
-// mot bien duy nhat.
-// ---------------------------------------------------------------------------
+// Dung nguyen preserve list 38 lop cua game. Xem docs/01-co-che.md
 
-// --- Nghe su kien: CHI DE CHAN DOAN, khong con quyen chan ------------------
-//
-// Ban dau dinh dung 'mission_lost' lam cong chan. DA BO (phuong an A).
-// Ly do, xac minh tren binary chu khong phai suy doan:
-//   mission_lost ban DUY NHAT tai 0x10269096, trong ham 0x10268CA0. Ham do chi
-//   push bon chuoi: 'trigger_finale', 'finale_trigger', 'FinaleLost',
-//   'mission_lost' => day la duong THUA FINALE.
-//   11 vi tri push mission_lost con lai deu la AddListener(+0x0C) hoac so chuoi.
-//   c6m1_riverbank khong phai finale => cong se khong bao gio mo.
-//
-// Van giu listener vi no tra loi mot cau van con treo: thuc te mission_lost co
-// ban khong, va ban truoc hay sau RestartRound. Log se noi.
-// CO MOT-LAN, KHONG dung cua so thoi gian.
-//
-// Ban dau dung cua so 5.0s. SAI: do that te cho thay mission_lost ban luc
-// t=63.47 con RestartRound chay luc t=70.50 - cach 7.03s, VUOT cua so 5s
-// => cong se truot luon ca wipe that.
-// Khoang cach nay do Director quyet dinh (man hinh thua, dem nguoc...), khong
-// co gia tri nao an toan de doan. Dung co mot-lan thi khong phai doan:
-//   mission_lost  -> bat co
-//   RestartRound  -> co bat thi don, roi TAT co ngay
-//   nap map moi   -> tat co (tranh co cu sot lai)
+// Nghe su kien: CHI DE CHAN DOAN, khong con quyen chan. Xem docs/01-co-che.md
 static bool  g_LossPending   = false;
 static float g_LastLossTime  = -1.0f;
 static char  g_LastLossName[32] = "";
@@ -1711,21 +1057,8 @@ static bool InPreserveList(const char* cls) {
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// DANH SACH GIU BO SUNG - wipekeep.txt
-//
-// Preserve list cua game (0x7ACE40) la thu game DUNG. Nhung co nhung lop game
-// san sang xoa ma XOA SOM lai sinh loi phia client. Ca dau tien gap:
-//   viec giu lai thuc the cua nguoi choi gay loi MAT BONG.
-//
-// Nen can mot danh sach GIU THEM, sua duoc bang file, khong phai build lai -
-// dung kieu nhu serveronly.txt:
-//   dong ket thuc bang '_'  -> khop TIEN TO ca ho   (vi du "weapon_")
-//   con lai                 -> khop CHINH XAC ten lop
-//
-// Dat o: left4dead2/addons/edictbudget/wipekeep.txt
-// Thieu file = khong giu them gi (chi dung preserve list cua game).
-// ---------------------------------------------------------------------------
+// Danh sach giu bo sung - wipekeep.txt. DE TRONG moi dung: o wipe, entity bi
+// xoa se DUOC DUNG LAI tu entity lump. Xem docs/01-co-che.md
 #define KEEP_MAX 128
 static char g_KeepExtra[KEEP_MAX][48];
 static int  g_KeepCount = 0;
@@ -1792,21 +1125,7 @@ static bool InKeepExtra(const char* cls) {
 static void __fastcall Hook_RestartRound(void* thisptr, void* edx) {
     if (!g_OrigRestartRound) return;
 
-    // --- CONG CHAN (KHOI PHUC 07/08 sau khi do that te) ---
-    //
-    // Da tung bo cong nay, dua tren suy luan tu disassembly rang mission_lost
-    // "chi ban khi thua finale" (ham 0x10268CA0 co push trigger_finale /
-    // FinaleLost). SUY LUAN DO SAI - do that te tren c6m1_riverbank (KHONG phai
-    // finale) cho thay mission_lost VAN BAN, luc t=63.47.
-    // Lai dung cai bay muc 0-BAI-HOC: suy tu chuoi nam gan nhau.
-    //
-    // Hau qua khi khong co cong (log 07/08, wipeclear=2):
-    //   RestartRound duoc goi ngay luc t=1.00 KHI MAP VUA NAP (vong choi dau
-    //   tien, khong phai wipe). Ban va da xoa 1155 entity cua map ngay tai do,
-    //   va slot trong SAU RestartRound van o 1462 (nen la 474) => map KHONG
-    //   duoc dung lai. Pha map.
-    //
-    // => Chi don khi CO mission_lost dang cho. Co mot-lan, khong cua so gio.
+// Cong chan wipeclear (khoi phuc 07/08 sau khi do that te). docs/01-co-che.md
     float now = gpGlobals ? gpGlobals->curtime : 0.0f;
     float ago = (g_LastLossTime >= 0.0f) ? (now - g_LastLossTime) : -1.0f;
 
@@ -1869,55 +1188,9 @@ static void __fastcall Hook_RestartRound(void* thisptr, void* edx) {
              g_WipeClearRuns, CountFreeEdicts(), g_num_edicts ? (int)*g_num_edicts : -1);
 }
 
-// ==========================================================================
-// MAPCLEAR - don entity TRUOC KHI ENGINE don, luc CHUYEN MAN
-// ==========================================================================
-//
-// XXX KHONG PHAI HUONG 4096. Khong bigarray/snapshot/pinmax/pinglobals/markfree.
-//    Khong va mot byte nao. Chi moc vtable, giong het wipeclear.
-//
-// !!  KHAC WIPECLEAR O DIEM SINH TU - DOC TRUOC KHI SUA:
-//   wipeclear: cung map, xoa nham thi entity DUOC DUNG LAI tu lump
-//              => giu TOI THIEU moi dung (wipekeep.txt de RONG)
-//   mapclear : map khac, xoa nham la MAT VINH VIEN do nguoi choi
-//              => giu TOI DA. Khong chac thi GIU.
-//   => TUYET DOI khong bung tap giu cua hai ben cho nhau.
-//
-// CO CHE (da doc tren binary):
-//   - Map moi bat dau bang bang edict MOI. Rac NGOAI vung chuyen tiep tu bien
-//     mat => don no vo ich. Chi thu NAM TRONG danh sach mang sang moi dang don.
-//   - CBaseEntity::ObjectCaps() 0x10056160 MAC DINH tra FCAP_ACROSS_TRANSITION
-//     => gan nhu MOI THU trong vung deu duoc mang sang, ke ca xac/manh vo.
-//   - Hai duong mang sang:
-//       (a) do TREN TAY -> CTerrorGameRules slot 38 serialize thanh KeyValues
-//           (weaponID, currentMagazine, extraAmmo...). KHONG ton edict.
-//       (b) do ROI DUOI DAT -> trigger_transition chuan cua Source. TON EDICT.
-//     => chi (b) la van de.
-//   - the_hive_m4 vao map chi con 31 slot trong => mang sang ~32 la cham tran.
-//
-// DIEM MOC: CTerrorGameRules vtable slot 38 = 0x102B8140, hook POST.
-//   In ra "Preparing player entities for changelevel". __thiscall, ret 4.
-//   Nam tren MAP CU, SAU anh chup nguoi choi, TRUOC khi bo may save khoi dong.
-//   Cung vtable wipeclear dang moc (slot 178 = RestartRound = 0x102E0650).
-//
-//   XXX DA BO slot 27 (BuildAdjacentMapList): no chay 3 cho, 2 cho o MAP MOI
-//      (CSaveRestore::LoadAdjacentEnts + duong nap .HL2). Hook mu = xoa entity
-//      map moi ngay luc nap. Va tai slot 27 thi SaveGameState da goi PreSave
-//      => bang entity da dung => xoa co nguy co con tro treo.
-//
-// XXX DUNG chay g_debug_transitions de "xem engine in ra": cvar do CHAN LUON
-//    viec chuyen man, dat m_pfnTouch = 0 => cua phong an toan thanh cua chet.
-//
-// TAP GIU MAC DINH (an toan, doc them tu mapkeep.txt):
-//   - toan bo preserve list CUA GAME (dung chung ham voi wipeclear) - bao thu
-//   - player, weapon_ (trum ca weapon_*_spawn, gascan/propanetank/oxygentank)
-//   - prop_fuel_barrel (trum ca _piece)
-//   - ha tang chuyen man: info_landmark, trigger/info_changelevel, trigger_transition
-//     (xoa may cai nay la hong CHINH viec chuyen man)
-//
-// CONG TAC: mapclear = 0 tat | 1 CHI QUAN SAT (dem+ghi log, khong xoa) | 2 don that
-// (g_MapClear khai bao o dau file, canh cac cong tac khac)
-// ---------------------------------------------------------------------------
+// MAPCLEAR - don entity TRUOC KHI ENGINE don, luc CHUYEN MAN.
+// De mapclear=1 (CHI QUAN SAT). Muc 2 chua chung minh duoc loi ich va da
+// tung lam sap server. Xem docs/02-mapclear.md
 
 #define MAPKILL_MAX 96
 static char  g_MapKill[MAPKILL_MAX][40];
@@ -1978,13 +1251,7 @@ static void LoadMapKill() {
 }
 
 // Hoi chinh engine: entity nay CO duoc mang sang map moi khong?
-// ObjectCaps() la ham ao slot 40 (+0xA0). Bit 0x2 = FCAP_ACROSS_TRANSITION.
-// Ca InTransitionVolume (0x101FEFB0) lan ComputeEntitySaveFlags (0x101F8D80)
-// deu goi dung cho nay => hoi thang, khoi phai truyen ten vung.
-//
-// *** DAY LA KHAC BIET COT LOI SO VOI BAN 1 (ban 1 lam CHET server):
-//    ban 1 quet CA 1659 entity roi xoa 1497 -> dung ca thu engine dang can.
-//    ban nay CHI dung toi entity that su se di theo -> pham vi nho hon han.
+// ObjectCaps() = vtable slot 40, bit 0x2 = FCAP_ACROSS_TRANSITION.
 #define FCAP_ACROSS_TRANSITION 0x00000002
 static bool WillCarryOver(void* ent) {
     if (!ent) return false;
@@ -2101,14 +1368,8 @@ static void __fastcall Hook_PrepChangelevel(void* thisptr, void* edx, void* a1) 
         bool willCarry = WillCarryOver(e);
         if (willCarry) carry++;
 
-        // 1. DANH SACH KHONG DUOC DON:
-        //      - vat pham cua nguoi choi   -> weapon_ , prop_fuel_barrel*
-        //      - diem chuyen map           -> info_landmark, trigger/info_changelevel,
-        //                                     trigger_transition
-        //      - cua an toan               -> prop_door_rotating_checkpoint
-        //      - nguoi choi                -> player
-        //    + toan bo preserve list CUA GAME (worldspawn, terror_gamerules,
-        //      soundent, scene_manager... xoa may cai nay la chet ngay)
+// 1. DANH SACH KHONG DUOC DON: vat pham nguoi choi, diem chuyen map, cua an
+// toan, nguoi choi, cong toan bo preserve list cua game. docs/02-mapclear.md
         if (InPreserveList(cls) || InMapKeep(cls)) { kept++; e = next; continue; }
 
         // 2. g_MapClearCarryOnly: THI NGHIEM DA THAT BAI, mac dinh 0 nen nhanh nay
@@ -2189,15 +1450,8 @@ static bool InstallMapClear() {
     if (!g_EntList)           g_EntList           = (void*)                (b + 0x7E0760);
     if (!g_PreserveList)      g_PreserveList      = (const char**)         (b + 0x7ACE40);
 
-    // Cong an toan 1: prologue cua 0x102B8140 phai dung.
-    //
-    // !!  BAI HOC 09/08: prologue nay CO DIA CHI TUYET DOI, KHONG duoc so ca 16 byte.
-    //   55 8B EC 56 8B 35 | E0 7A 89 10 | 8B 06 8B 50 68 8B
-    //                       ^^^^^^^^^^^ mov esi,[0x10897AE0]
-    //   Bon byte do bi TRINH NAP GHI LAI khi server.dll nap o base khac
-    //   => so nguyen 16 byte thi KHONG BAO GIO khop, cong an toan chan oan.
-    //   (wipeclear khong dinh vi prologue cua no khong co dia chi tuyet doi.)
-    // => Dung mat na: '?' = byte bi relocate, bo qua.
+// Cong an toan 1: prologue cua 0x102B8140 phai dung. Prologue chua dia chi
+// tuyet doi DA DOI THEO BASE nen phai dung MAT NA. Xem docs/02-mapclear.md
     static const uint8_t kSig[]  = {
         0x55,0x8B,0xEC,0x56,0x8B,0x35, 0,0,0,0, 0x8B,0x06,0x8B,0x50,0x68,0x8B };
     static const char    kMask[] = "xxxxxx????xxxxxx";
@@ -2245,45 +1499,9 @@ static void RemoveMapClear() {
 }
 
 
-// ==========================================================================
-// NOEDICT - khien mot so lop KHONG BAO GIO duoc cap edict
-// ==========================================================================
-//
-// XXX DAY KHONG PHAI HUONG 4096. Khong dung bigarray/snapshot/pinmax/pinglobals/
-//    markfree. Khong va mot byte nao cua engine.dll. Neu ai do sua ham nay ma
-//    thay minh can bat mot trong nam cong tac do => DA DI SAI DUONG, dung lai.
-//
-// CO CHE (da xac minh tren binary):
-//   CBaseEntity::PostConstructor @ 0x10055620  (RVA 0x55620) la noi QUYET DINH:
-//       mov  eax, [esi+0x138]      ; m_iEFlags
-//       shr  edx, 9
-//       test dl, 1                 ; bit 9 = EFL_SERVER_ONLY
-//       je   <nhanh CAP EDICT>     ; = 0 -> AddNetworkableEntity, dai 0-2047
-//       mov  ecx, gEntList
-//       call AddNonNetworkableEntity   ; = 1 -> dai 2049-4095, KHONG EDICT
-//   Ta chi can bat bit 9 TRUOC khi ham goc chay.
-//
-// DIEM MOC: PostConstructor la HAM AO, o vtable slot 29 (+0x74). Moi lop co
-// vtable RIENG, nen thay slot 29 cua rieng vtable lop muc tieu => chi tac dong
-// dung lop do. Khong detour byte, khong dung toi lop khac.
-//
-// Factory Create cua moi lop co dang:
-//     push <sizeof>              ; operator new
-//     call operator new
-//     push 0                     ; <- bServerOnly = FALSE (co Valve noi toi)
-//     call <ctor>
-//     mov  dword ptr [esi], <VTABLE>   ; <- ta tim con so nay
-//     ...
-//     call [vtable+0x74]         ; PostConstructor
-//
-// XXX CAM DUA VAO DANH SACH:
-//   - lop SOLID hoac CO DI CHUYEN: IVEngineServer::SolidMoved / TriggerMoved
-//     deu nhan edict_t*. Khong edict => khong cap nhat phan vung khong gian.
-//   - moi lop trigger_*  (cung ly do)
-//   - lop co ServerClass RIENG (co DT_ rieng) - client can dung lai chung.
-// AN TOAN da kiem cho: infodecal (StaticDecal dung chi so BE MAT, khong phai
-// chi so cua chinh no) va ho light (LightStyle khong kem chi so entity nao).
-// --------------------------------------------------------------------------
+// NOEDICT - khien mot so lop KHONG BAO GIO duoc cap edict, bang cach dat
+// EFL_SERVER_ONLY (bit 9 cua m_iEFlags) trong PostConstructor (vtable slot 29).
+// Day la co che MANH NHAT va mat mat bang 0. Xem docs/01-co-che.md
 typedef void (__fastcall *PostCtor_t)(void*, void*, const char*);
 static PostCtor_t g_OrigPostCtor = NULL;
 
@@ -2430,22 +1648,10 @@ static bool InstallNoEdict() {
                      "- da sua roi hoac lop ghi de, BO QUA", cls, (void*)vt, vt[29]);
             continue;
         }
-        // Cong an toan 3: DIEU KIEN 1 - lop KHONG duoc co SendTable rieng.
-        //
-        // Day la dieu kien loc manh nhat trong 6 dieu kien, va la dieu kien DUY NHAT
-        // may kiem duoc thay nguoi. Truoc day no nam trong ghi chu cua noedict.txt,
-        // ai khong doc thi them bua vao va hong khi chay.
-        //
-        // GetServerClass() = vtable slot 9. Than ham la `mov eax, imm32 ; ret`:
-        //     B8 <imm32> C3
-        //   imm32 == 0x107D78A8  -> ServerClass CBaseEntity / DT_BaseEntity -> CHO PHEP
-        //   imm32 != 0x107D78A8  -> lop co SendTable rieng                  -> TU CHOI
-        //
-        // Da quet 24 lop bang cach nay, hieu chuan voi 8 gia tri biet chac, khop 100%.
-        // Bon lop dang chay (infodecal/light/light_spot/path_track) deu tra 0x107D78A8.
-        // Vi du bi tu choi: spotlight_end (CSpotlightEnd), beam (CBeam),
-        //                   env_sprite (CSprite), light_dynamic (DT_DynamicLight),
-        //                   ca ho trigger_* (CBaseTrigger).
+// Cong an toan 3 - DIEU KIEN 1: lop KHONG duoc co SendTable rieng.
+// GetServerClass() = vtable slot 9, than ham `mov eax, imm32; ret`.
+// PHAI so voi base + DT_BASEENTITY_RVA, KHONG so thang dia chi tinh.
+// Xem docs/01-co-che.md muc noedict.
         {
             const uint8_t* gsc = (const uint8_t*)vt[9];
             uint32_t sc = 0;
@@ -2481,56 +1687,9 @@ static bool InstallNoEdict() {
     return g_PatchedVtCount > 0;
 }
 
-// =====================================================================
-//  SWAP: doi mot lop entity thanh lop khac RE HON ngay luc tao
-// =====================================================================
-//
-// Bai toan: `point_spotlight` khi spawn TU TAO THEM `spotlight_end` + `beam`
-//   => 3 edict cho moi dong trong lump BSP.
-//   `beam_spotlight` lam viec tuong tu nhung VE HOAN TOAN PHIA CLIENT,
-//   khong sinh entity con => 1 edict.
-//   Chinh tac gia the_hive da dung ca hai lop trong cung chien dich
-//   (m1 co 2 beam_spotlight, m5 co 21, m4 co 312 point_spotlight).
-//   Doi duoc: m4 937 -> 313, m3 240 -> 80, m5 41 -> 33. Tong 792 edict.
-//
-// KHAC HAN noedict: day KHONG phai go mang. Client van nhan entity, van ve
-//   tia sang. Chi la mot lop re hon. Nen khong dinh 6 dieu kien nao het.
-//
-// CHO MOC — vi sao cho nay sach:
-//   CreateEntityByName (0x101196B0) khong tu tao gi, no goi qua
-//     EntityFactoryDictionary()->vtable[1]:
-//       101196E7 call 0x1020CA70 ; mov eax,[edx+4] ; call eax
-//   Quet ca .text: 562 cho goi 0x1020CA70, trong do
-//     558 dung slot 0 (InstallFactory), 1 dung slot 4 (GetCannonicalName),
-//     va DUNG 3 cho dung slot 1 (Create): CreateEntityByName + 2 nhanh cua
-//     bo phan tich lump BSP.
-//   => Va MOT con tro vtable phu ca luc nap lump lan luc choi.
-//   0x1020CA70 la dia chi plugin DA dung san trong ResolveClassVtable.
-//   Dung SourceHook-style vtable swap, KHONG detour byte.
-//
-// ANH XA KEYVALUE (doc datamap cua ca hai lop):
-//   SpotlightLength / SpotlightWidth / HDRColorScale  TRUNG TEN TUYET DOI
-//   input LightOn / LightOff, output OnLightOn        trung ten
-//   cung baseMap = CBaseEntity                        moi khoa ke thua giong het
-//   MAT DUNG MOT KHOA: HaloScale - client.dll ghi cung halo = 60.0 tai 1006CC80.
-//     => map nao dat HaloScale 10 (vd the_hive_m4) se thay halo TO GAP 6.
-//     43/517 point_spotlight tren 50 map von da dat 60 = dung mac dinh, khong doi gi.
-//
-// spawnflags: bit 0 (bat san) va bit 1 (khong den dong) GIONG HET giua hai lop.
-//   Quet 517 point_spotlight tren 45 map goc + 5 map hive: chi tung la 2 hoac 3,
-//   chua cai nao dat bit 2/3/6 => rui ro bat nham xoay/nofog = 0.
-//
-// m_iClassname tu lump se ghi de lai thanh "point_spotlight". Da chung minh
-//   server.dll khong co cho nao tra cuu chuoi do ngoai InstallFactory => vo hai,
-//   va giu tuong thich nguoc cho plugin SourceMod dang loc theo ten lop.
-//
-// CHUA LAM (co y, de test dan):
-//   Tu so datamap cua hai lop luc khoi dong de bao khoa nao bi mat.
-//   GetDataDescMap() = vtable slot 11 (+0x2C), cung khuon `B8 imm32 C3` nhu slot 9.
-//   datamap_t 24 byte {dataDesc, nFields, className, baseMap};
-//   typedescription_t 60 byte, ten keyvalue o +0x10.
-//   Chua viet vi day la doc con tro chua kiem chung tren ban nay - them sau,
-//   khi co che doi lop da chay on.
+// SWAP: doi mot lop entity thanh lop khac RE HON ngay luc tao.
+// KHONG phai go mang, KHONG phai xoa - client van nhan va van ve.
+// Moc CEntityFactoryDictionary::Create (vtable slot 1). Xem docs/01-co-che.md
 
 #define SWAP_MAX 16
 static char g_SwapFrom[SWAP_MAX][40];
@@ -2877,24 +2036,8 @@ static edict_t* Hook_CreateEdict(int forceIndex) {
     }
     if (!gpGlobals || !gpGlobals->pEdicts) RETURN_META_VALUE(MRES_IGNORED, nullptr);
 
-    // Cap phat DI XUONG tu dinh cua dai.
-    //
-    // CBaseEntityList cua server.dll co DUY NHAT mot m_EntPtrArray[4096], ma nua
-    // tren duoc danh rieng cho entity KHONG CO EDICT: chi so 0..2047 do
-    // AddNetworkableEntity(entindex) ghi, con 2048..4095 do
-    // AddNonNetworkableEntity() cap ra tu m_freeNonNetworkableList.
-    //
-    // Ep mot chi so edict, vi du 3000, se lam server.dll ghi vao
-    // m_EntPtrArray[3000] qua duong CO MANG - dung cai o ma be chua khong-co-mang
-    // cua no co the giao cho MOT entity khac. The la hai entity dung chung mot o,
-    // cai thu hai de len cai thu nhat, va mot lan tra cuu EHANDLE ve sau se qua
-    // duoc phep kiem serial nhung tra ve con tro treo. Do chinh la vu sap quan sat
-    // duoc: "call [vtable+0x324]" nhay vao vung du lieu chuoi.
-    //
-    // Danh sach trong duoc dung theo thu tu TANG DAN va lay ra tu dau, nen
-    // server.dll tieu thu 2048 di LEN. Cap phat tu 4095 di XUONG giu hai ben tach
-    // nhau cho toi khi tong muc dung cua ca hai vuot 2048 o - ma server.dll thi
-    // xua nay chi can vai tram.
+// Cap phat DI XUONG tu dinh cua dai, de khong dam vao be khong-co-mang cua
+// server.dll dang tieu thu di LEN tu 2048. Xem docs/03-huong-4096.md
     for (int n = 0; n < EXT_LIMIT - NET_LIMIT; n++) {
         int i = g_Cursor - n;
         if (i < NET_LIMIT) i += (EXT_LIMIT - NET_LIMIT);
@@ -3015,14 +2158,7 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
                                   char const *pOldLevel, char const *pLandmarkName,
                                   bool loadGame, bool background)
 {
-    // Bo dem SWAP ve 0 tai DAY, khong phai o SwapReport() (ServerActivate).
-    //
-    // 15/08: log cho thay co lan bao "gap 392" = 312 (m4) + 80 (m3), tuc MOT bao cao
-    // gom HAI lan nap map - ServerActivate khong chay dung nhip voi moi lan nap.
-    // Cung the voi "gap 82" (80 + 2). Chi sai con so trong log, khong sai viec doi lop
-    // (`doi` luon bang `gap`), nhung doc log de suy ra map nao thi bi nham.
-    // LevelInit chay dung mot lan cho moi map va TRUOC khi lump duoc phan tich,
-    // nen dat lai o day moi khop.
+// Dat lai bo dem SWAP tai DAY, khong phai o SwapReport(). docs/01-co-che.md
     if (g_Stage != 0 && g_Swap > 0) {
         for (int i = 0; i < g_SwapCount; i++) { g_SwapSeen[i] = 0; g_SwapHits[i] = 0; }
         g_SwapDone = 0;
@@ -3076,20 +2212,8 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
     g_Cursor = EXT_LIMIT - 1;
     g_ExtReady = false;
 
-    // SV_AllocateEdicts da chay xong cho map nay va, nho ban va o tren, giao cho
-    // ta mot mang 4096 muc that su. No de vung nho KHONG KHOI TAO, ma FL_EDICT_FREE
-    // la mot bit BAT - nen mot o toan so 0 doc ra thanh "dang chiem dung". Phai
-    // danh dau nua cua ta la TRONG mot cach tuong minh, neu khong thi khong bao gio
-    // dat duoc gi vao do.
-    // Dong dau len nua tren MOI KHI mang duoc noi rong, khong phai chi khi phan
-    // tach dang bat.
-    //
-    // SV_AllocateEdicts tra ve vung malloc tho, va FL_EDICT_FREE la bit BAT - nen
-    // mot o chua khoi tao doc ra thanh DANG CHIEM DUNG, kem mot con tro m_pUnk
-    // ngau nhien. Dat dieu kien nay theo phan tach co nghia la khi mang da noi rong
-    // ma phan tach lai tat, cac o 2048-4095 giu rac trong-nhu-that cho bat cu ai
-    // cham toi chung. Danh dau chung la trong ton mot luot duyet moi map va xoa bo
-    // ca mot lop loi kieu "doc ra mot entity trong rat co ly ma chua tung ton tai".
+// Danh dau nua tren la TRONG. FL_EDICT_FREE la bit BAT nen o chua khoi tao
+// doc ra thanh DANG CHIEM DUNG. Xem docs/03-huong-4096.md
     if (g_MarkFree && gpGlobals && gpGlobals->pEdicts && *g_max_edicts >= EXT_LIMIT) {
         uint8_t* arr = (uint8_t*)gpGlobals->pEdicts;
         for (int i = NET_LIMIT; i < EXT_LIMIT; i++) {
@@ -3122,45 +2246,9 @@ bool SamplePlugin::Hook_LevelInit(char const *pMapName, char const *pMapEntities
     return true;
 }
 
-// --------------------------------------------------------------------------
-// Bo canh cho DUY NHAT mot tinh huong giet tien trinh ma khong de lai dump
-// --------------------------------------------------------------------------
-//
-// TakeTickSnapshot (engine RVA 0x11D900) mo mot khung ngan xep co dinh 0x1010
-// byte va gom chi so cua cac edict dang song vao mot mang WORD tai [ebp-0x1004],
-// con stack cookie thi nam o [ebp-4]. Cho do du dung
-// (0x1004 - 4) / 2 = 2048 muc - dung bang max_edicts goc, day chat khong du mot o.
-//
-// Vong lap bi chan boi num_edicts, ma con so do chi tang chu khong giam, va tran
-// cua no la max_edicts. Nen chi mot KHOANH KHAC max_edicts == 4096 la du de
-// num_edicts vuot 2048 VINH VIEN cho map do, va ban snapshot ke tiep se ghi muc
-// thu 2049 de thang len cookie. __security_check_cookie sau do that bai tuc thi:
-// tien trinh bien mat, khong minidump, khong mot dong nao tren console - dung cai
-// vu sap ma ta dang truy tim.
-//
-// Hook_CreateEdict co nang max_edicts len 4096 quanh loi goi SH_CALL cua no, nen
-// khoanh khac do CHUNG MINH DUOC la co that. Thay vi cu doan tiep, hay canh ca hai
-// gia tri moi frame va len tieng ngay lan dau mot trong hai roi khoi tam an toan.
-// --------------------------------------------------------------------------
-// Canh dung cai cau truc ma may chu chet tren no
-// --------------------------------------------------------------------------
-//
-// Moi lan sap deu roi vao sourcemod.2.l4d2.dll+0x13B63:
-//
-//     mov ecx, [sourcemod+0xAADFC]   ; PlayerManager::m_hooks.m_Head
-//     mov esi, [ecx + 4]             ; m_Head->next   <-- loi o day
-//
-// m_hooks la mot SourceHook List<IClientListener*>; dau danh sach la mot nut 12
-// byte cap phat mot lan luc nap DLL, voi next/prev tro vao chinh no khi rong.
-// Co thu gi do lam hong no TU RAT LAU truoc luc sap, va cu sap chi xay ra khi
-// PlayerManager::MaxPlayersChanged chay lan ke tiep - nen dia chi loi KHONG noi
-// len dieu gi ve thu pham.
-//
-// Viec chia doi de tim ban va da cham day: moi cong tac CO THE tat deu da tat, ma
-// cu sap van song qua het. Vay thi thoi dung hoi ban va nao sai nua, ma di tim
-// KHI NAO cau truc do vo. Kiem tinh nhat quan cua vong danh sach mot lan moi frame
-// bien mot cu sap tri hoan thanh mot su kien co dau thoi gian, nam ngay canh moi
-// thu khac ma log ghi lai o dung khoanh khac do.
+// Bo canh cho DUY NHAT mot tinh huong giet tien trinh ma khong de lai dump:
+// TakeTickSnapshot ghi tran stack cookie khi num_edicts vuot 2048.
+// Xem docs/03-huong-4096.md
 static bool g_WarnedSM = false;
 // (khai bao o dau file)
 
@@ -3230,27 +2318,8 @@ static void ReleaseReuseCooldown()
         g_LastReuseTick = tick;
     }
 
-    // Phep do truoc do cho ra mot ket qua MAU THUAN voi ma may: num_edicts=2048
-    // voi 880 edict mang co FL_EDICT_FREE, ma engine van bao "no free edicts".
-    // ED_Alloc ghi nho MOI edict trong no di ngang qua (mov ebx,esi tai 0x1E0209)
-    // va chi bao loi khi ebx van con -1; nen voi 880 o trong thi nhanh do khong
-    // the toi duoc.
-    //
-    // Chi co MOT cach de ca hai su that cung dung: vong quet KHONG HE CHAY. No bat
-    // dau tu
-    //     esi = sv.GetMaxClients() + 1
-    // va lenh tai 0x1E01E8 nhay qua ca vong lap khi esi >= num_edicts. Vay con so
-    // quan trong KHONG PHAI la co bao nhieu o trong - ma la co bao nhieu o trong
-    // NAM TRONG CUA SO ma engine thuc su nhin vao.
-    //
-    // Goi chinh GetMaxClients cua engine (RVA 0x134640 tren doi tuong sv) de doc
-    // DUNG cai ma ED_Alloc doc, thay vi tin vao gpGlobals.
-    // Hoa ra sv.GetMaxClients() (RVA 0x134640) chi la mot getter mot dong:
-    //     mov eax, [ecx+0x104] ; ret
-    // nen doc thang truong do - khong goi ham, khong rui ro ve quy uoc goi.
-    //
-    // Dang luu y: L4DToolZ ghi vao sv[+0x180] (slots_idx 0x60 cua no), mot truong
-    // KHAC HAN. Hai truong nay co dong y voi nhau khong, chinh la cau dang hoi.
+// Phep do truoc do MAU THUAN voi ma may: 2048 edict ma 880 o trong van bao het.
+// Loi giai: vong quet khong he chay. Xem docs/05-do-dac.md
     uint8_t* svObj = (uint8_t*)g_num_edicts - 0x214;
     int engMaxClients = *(int*)(svObj + 0x104);
     int toolzSlots    = *(int*)(svObj + 0x180);
@@ -3290,17 +2359,8 @@ static void ReleaseReuseCooldown()
     engine->AllowImmediateEdictReuse();
 }
 
-// --------------------------------------------------------------------------
-// Bat DUNG khoanh khac ED_Alloc bo cuoc
-// --------------------------------------------------------------------------
-//
-// Lay mau tu mot hook co tiet che thi khong bao gio bat duoc cu hong: moi lan lay
-// mau deu thay num_edicts=2012 (duoi tran 2048) voi 861 edict trong nam trong cua
-// so quet - mot trang thai ma ED_Alloc CHUNG MINH DUOC la khong the that bai. Dot
-// bung no cua wipe xay ra GON TRONG mot frame, tuc la giua hai lan lay mau.
-//
-// Mot POST hook tren CreateEdict nhin thay dung MOT thu quan trong: chinh loi goi
-// da tra ve NULL. Ghi lai toan bo trang thai ngay tai do, khong tiet che.
+// Bat DUNG khoanh khac ED_Alloc bo cuoc bang mot POST hook tren CreateEdict.
+// Xem docs/05-do-dac.md
 static int g_NullReports = 0;
 
 edict_t* Hook_CreateEdict_Post(int forceIndex)
@@ -3333,25 +2393,8 @@ edict_t* Hook_CreateEdict_Post(int forceIndex)
     RETURN_META_VALUE(MRES_IGNORED, ret);
 }
 
-// ==========================================================================
-// HEARTBEAT - ghi dinh ky so lieu thuc the vao console.log
-// ==========================================================================
-//
-// Muc dich: may chu chinh thuc chay dai ngay cho nhieu du lieu hon test cuc bo.
-// trap=1 chi do bang kiem ke LUC CHET - tuc chi biet ket qua, khong biet dien
-// bien. Heartbeat cho biet lop nao TANG DAN theo thoi gian, la thu can de thiet
-// ke co che thu hoi entity trong luc choi.
-//
-// CHI GHI LOG. Khong dong vao entity nao.
-//
-// Moi lan cham nhip:
-//   - mot dong tong hop:  song / num_edicts / trong / bien do
-//   - cac lop CO THAY DOI so voi lan truoc, sap theo muc tang giam dan
-//     (chi in thay doi, khong in ca bang => log khong phinh)
-//
-// CONG TAC: heartbeat = so GIAY giua hai lan ghi. 0 = tat.
-//           Khuyen nghi 300 (5 phut).
-// --------------------------------------------------------------------------
+// HEARTBEAT - ghi dinh ky so lieu thuc the vao log. Chi ghi, khong dong vao
+// entity nao. Xem docs/05-do-dac.md
 #define HB_MAX 96
 static char  g_HbName[HB_MAX][40];
 static int   g_HbCount[HB_MAX];

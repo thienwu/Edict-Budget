@@ -2,6 +2,8 @@
 
 <https://github.com/thienwu/Edict-Budget>
 
+*Tiếng Việt (bản chính) · [English](README.en.md)*
+
 Plugin Metamod:Source cho **Left 4 Dead 2 dedicated server**, ngăn server chết vì:
 
 ```
