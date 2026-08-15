@@ -1,0 +1,14 @@
+# wipekeep.txt - lop GIU THEM khi wipeclear don (ngoai preserve list cua game)
+#
+# ===========================================================================
+# DE TRONG. Day la cau hinh dung.
+# ===========================================================================
+# wipeclear chi doi THOI DIEM don, khong doi TAP bi don - dung y het CleanUpMap.
+#
+# Da thu them tien to "weapon_" (giu ~190 entity vu khi):
+#   ket qua CRASH SOM HON HAN - 2041 song/7 trong, thay vi 1042 song/1006 trong.
+#   Ly do: o WIPE, entity bi xoa se DUOC DUNG LAI tu entity lump.
+#          Giu them chi lam HEP BIEN DO, khong duoc gi.
+#
+# ?? DUNG NHAM VOI mapkeep.txt: o CHUYEN MAN thi nguoc lai - xoa nham la
+#    MAT VINH VIEN do nguoi choi, nen o do phai giu TOI DA.

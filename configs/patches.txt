@@ -1,0 +1,53 @@
+# edictbudget - cong tac
+#
+# CAU HINH SAN XUAT: chi bat nhung gi DA DO DUOC tren may chu that.
+# Sua file nay chi can khoi dong lai server, KHONG can build lai.
+
+# ===== DANG BAT =====
+
+# Don entity o dau CTerrorGameRules::RestartRound, TRUOC vong hoi sinh nguoi choi.
+# 0 = tat | 1 = chi quan sat | 2 = don that
+# Da do: song qua 5 wipe lien tiep (map thuong) va 3 wipe lien tiep (c6m1_riverbank).
+wipeclear=2
+# Doi 1 byte trong engine.dll (jae -> jmp), tim bang QUET CHU KY nen tu dinh vi duoc.
+# Da do (doi chung): cung tinh huong num_edicts=2048 + ~999 slot trong,
+#   freegate=0 -> CHET  |  freegate=1 -> SONG.
+freegate=1
+# Da do: ch04_pripyat03 tu CHET o 2048 edict -> nap duoc voi num_edicts=1178.
+#        Nguoi dung xac nhan bang mat: khong mat decal, anh sang dung.
+noedict=1
+trap=1
+
+# Don entity luc chuyen man. CHUA CHUNG MINH DUOC LOI ICH.
+#   Da song o mapclearmax=100, nhung trong 100 cai xoa chi 9 cai thuc su
+#   duoc mang sang => loi ich khong dang ke.
+#   Da CHET CAM 2 lan khi xoa >1300 (khong ED_Alloc, khong dump).
+# Muon thu lai: dat mapclear=2 va mapclearmax=100, tang dan.
+mapclear=0
+mapclearmax=100
+
+# Ghi dinh ky so lieu thuc the vao console.log. So GIAY, 0 = tat.
+# CHI GHI LOG, khong dong vao entity nao.
+# Moi lan cham nhip in 1 dong tong hop + cac lop CO THAY DOI so voi lan truoc.
+# Dung de biet lop nao TICH TU dan trong luc choi - du lieu cho co che thu hoi.
+heartbeat=300
+
+# 1 = in CA ra console server. Mac dinh 0 - chi ghi file rieng.
+# Toan bo log cua plugin ghi vao:  addons\edictbudget\edictbudget.log
+# Moi dong co dau thoi gian, file mo che do noi tiep, khong ghi de.
+logconsole=0
+# Nhom nay lam HONG VONG HOI SINH LUC WIPE (ghi chu trong ma nguon, dong 210-214),
+# ma wipeclear song duoc chinh la nho vong hoi sinh do.
+# Phep kiem truoc moi de xuat ve dai chi so cao: "No co can bigarray khong?" - co thi DUNG.
+bigarray=0
+snapshot=0
+pinmax=0
+pinglobals=0
+markfree=0
+freetime=0
+indexbounds=0
+forcedindex=0
+detour=0
+reuse=0
+nonetkill=0
+nonethigh=0

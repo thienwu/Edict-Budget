@@ -1,0 +1,36 @@
+# noedict.txt - cac lop KHONG BAO GIO duoc cap edict (EFL_SERVER_ONLY)
+#
+# Co che: bat bit 9 cua m_iEFlags truoc khi CBaseEntity::PostConstructor chay.
+#   co bat  -> AddNonNetworkableEntity -> dai 2049-4095, KHONG ton edict
+#   khong   -> AddNetworkableEntity    -> dai 0-2047,    ton edict
+# Dai khong mang co 2047 o. Tran no chi CANH BAO, khong giet server.
+#
+# Luat khop: dong ket thuc '_' = khop TIEN TO. Con lai = khop CHINH XAC.
+# Sua file nay chi khoi dong lai server, KHONG build lai.
+#
+# ============ TRUOC KHI THEM LOP MOI, PHAI QUA DU 6 DIEU KIEN ============
+#  1. Khong co SendTable rieng          (vtable[9] tra 0x107D78A8)
+#  2. Khong solid, khong di chuyen      (SolidMoved/TriggerMoved can edict_t*)
+#  3. Khong dung chi so CUA CHINH NO trong thong diep mang
+#     phan vi du: ambient_generic - EmitAmbientSound(entindex,...)
+#  4. Chua san server-only
+#  5. Khong bi lop CO MANG tro toi qua EHANDLE
+#     phan vi du: point_spotlight - spotlight_end goi SetOwnerEntity(this),
+#                 ma m_hOwnerEntity LA SendProp cua DT_BaseEntity
+#  6. Khong duoc GUI xuong client
+#     (co model + EF_NODRAW van an toan; "co model" mot minh KHONG phai tieu chi)
+# ========================================================================
+
+# --- Da do duoc tren may chu that ---
+# infodecal: StaticDecal() dung chi so BE MAT bi dan, khong phai chi so cua no.
+#            853 cai tren ch04_pripyat03 - lop dong nhat, 42% toan bo edict.
+infodecal
+
+# light / light_spot: LightStyle(style, pattern) khong kem chi so entity nao.
+#   KHONG them light_dynamic - lop do CO SendTable rieng (DT_DynamicLight).
+light
+light_spot
+
+# path_track: SetSolid(SOLID_NONE), khong model, khong ai tro toi qua SendProp.
+#   25 cai tren the_hive_m4.
+path_track

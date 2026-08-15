@@ -1,0 +1,12 @@
+edictbudget_mm.dll
+edictbudget_mm.pdb
+edictbudget_mm.lib
+edictbudget_mm.exp
+edictbudget_mm.map
+*.obj
+*.pdb
+*.asm
+*.tmp
+vc140.pdb
+sample_mm.lib
+sample_mm.exp

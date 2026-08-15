@@ -1,0 +1,65 @@
+edictbudget
+Metamod:Source plugin for Left 4 Dead 2 dedicated servers
+
+Copyright (C) 2026  Claude (Anthropic)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+===========================================================================
+TAC GIA
+
+Toan bo ma nguon nay do AI viet: Claude (Anthropic), chay trong Claude Code.
+Khong phai mot phan, khong phai "co AI ho tro" - la TOAN BO: thiet ke, doc
+nguoc server.dll/engine.dll, viet ma, do dac, va moi ghi chu trong kho nay.
+
+Nguoi van hanh may chu that da dat bai toan, chay thu, chup log, phat hien loi,
+va bac bo nhieu ket luan sai. Cac dong ghi "SAI, da sua" trong ma nguon chinh la
+dau vet cua nhung lan bi bac bo do.
+
+
+===========================================================================
+VI SAO GPLv3
+
+Metamod:Source cung la GPLv3. Plugin lien ket voi no nen GPLv3 la lua chon
+TUONG THICH, khong phai lua chon tuy tien.
+
+
+===========================================================================
+PHAM VI - CAI GI KHONG THUOC GIAY PHEP NAY
+
+Goi nay KHONG chua ma cua Valve.
+
+  src/sample_mm.cpp   ma tu viet.
+                      Cac dia chi ham va doan assembly trong chu thich la
+                      MO TA HANH VI cua server.dll / engine.dll phuc vu viec
+                      tuong thich, KHONG phai ma sao chep.
+
+  SDK cua Valve       KHONG nam trong kho nay.
+  Nhi phan cua game   KHONG nam trong kho nay.
+  Metamod:Source      KHONG nam trong kho nay. Tai rieng tu metamodsource.net.
+
+Ba muc cuoi co giay phep rieng cua chung, khong chiu giay phep nay.
+
+
+===========================================================================
+CANH BAO KY THUAT
+
+Plugin nay vá byte vao engine.dll va thay con tro vtable trong server.dll luc
+chay. Doc muc "Pham vi da kiem chung" trong README.md truoc khi dung tren may
+chu that: phan lon so lieu la phan tich tinh, phan chay that chi goi trong vai
+map cua mot chien dich.
+
+Moi co che deu co cong tac rieng trong patches.txt va deu tat duoc ma khong can
+build lai.
