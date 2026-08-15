@@ -95,6 +95,14 @@ Bon lop dang chay (infodecal/light/light_spot/path_track) deu tra 0x107D78A8.
 Vi du bi tu choi: spotlight_end (CSpotlightEnd), beam (CBeam),
                   env_sprite (CSprite), light_dynamic (DT_DynamicLight),
                   ca ho trigger_* (CBaseTrigger).
+
+LUU Y: imm32 la dia chi trong ANH TINH. Luc chay module nap o base khac va con
+tro doc tu vtable DA DUOC DOI THEO BASE, nen phep so PHAI la voi
+base + DT_BASEENTITY_RVA, TUYET DOI khong so thang gia tri tinh.
+So thang da lam ca bon lop dang chay bi TU CHOI am tham va noedict tat hoan
+toan - log ghi "da sua 0 vtable / 4 lop yeu cau", trong khi ca bon deu tra dung
+0x540378A8 = 0x53860000 (base that) + 0x7D78A8. Cung loai loi voi vu chu ky
+mapclear bi tu choi vi prologue chua co mat na.
 ```
 
 ## freegate - bo thoi gian cho 1 giay

@@ -105,10 +105,14 @@ Examples that get rejected: spotlight_end (CSpotlightEnd), beam (CBeam),
                             env_sprite (CSprite), light_dynamic (DT_DynamicLight),
                             the whole trigger_* family (CBaseTrigger).
 
-NOTE: imm32 is a STATIC image address. At runtime the module is loaded at a
-different base and the pointer read from the vtable is REBASED, so the comparison
-must be against base + RVA, never against the static value. Comparing directly
-silently rejected all four working classes and disabled noedict entirely.
+NOTE: imm32 is a STATIC image address. At runtime the module loads at a different
+base and the pointer read from the vtable is ALREADY REBASED, so the comparison
+MUST be against base + DT_BASEENTITY_RVA, NEVER against the static value.
+Comparing directly silently REJECTED all four working classes and disabled
+noedict entirely - the log read "patched 0 vtables / 4 classes requested", while
+all four were correctly returning 0x540378A8 = 0x53860000 (the real base) +
+0x7D78A8. Same class of bug as the mapclear signature being rejected because its
+prologue had no mask.
 ```
 
 ## `freegate` — drop the 1-second wait
