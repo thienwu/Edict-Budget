@@ -1,9 +1,11 @@
 @echo off
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars32.bat"
 
-rem Duong dan TUONG DOI theo vi tri build.bat (%~dp0 = ...\edictbudget\).
-rem Truoc day ghi cung "...\dichnguoc\..." -> thu muc bi doi ten thanh
-rem "dichnguoc - Copy (2)" la build gay loi C1083 khong tim thay ISmmPlugin.h.
+rem Duong dan TUONG DOI theo vi tri build.bat (%~dp0). DUNG ghi cung duong dan
+rem tuyet doi: ban dau co ghi cung, roi thu muc bi doi ten mot lan la build hong
+rem ngay (C1083 khong tim thay ISmmPlugin.h). Voi %~dp0 thi doi ten hay chuyen
+rem sang o dia khac deu khong anh huong - da kiem chung bang mot lan chuyen ca
+rem cay thu muc sang o khac, build lai chay ngay khong sua gi.
 set HL2SDK=%~dp0..\hl2sdk-l4d2
 set MMSOURCE=%~dp0..\metamod-source-1.12.0.1225
 
