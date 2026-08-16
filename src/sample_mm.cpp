@@ -284,6 +284,7 @@ static void LoadKillList() {
     static const char* kDefault[] = { NULL };
 
     FILE* f = OpenPluginFile("nonetkill.txt", "r");
+    bool coFile = (f != NULL);
     if (f) {
         char line[256];
         while (fgets(line, sizeof(line), f) && g_KillCount < KILL_MAX) {
@@ -311,8 +312,10 @@ static void LoadKillList() {
             g_KillCount++;
         }
     }
+    // Truoc day cho ngay OpenPluginFile vao doi so cua EL_LOG => mo file lan hai
+    // ma khong bao gio fclose. Dung co san coFile o tren.
     EL_LOG("[EdictBudget] NONETKILL: %d lop trong danh sach%s",
-             g_KillCount, OpenPluginFile("nonetkill.txt","r") ? "" : " (mac dinh)");
+             g_KillCount, coFile ? "" : " (mac dinh)");
     for (int i = 0; i < g_KillCount; i++)
         EL_LOG("[EdictBudget] NONETKILL:   [%d] '%s'", i, g_KillList[i]);
 }
@@ -361,7 +364,13 @@ static const char* RewriteLump(const char* lump, int* outHits) {
 
 static void LoadPatchSwitches() {
     FILE* f = OpenPluginFile("patches.txt", "r");
-    if (!f) return;
+    // Khong tim thay = MOI cong tac ve mac dinh, im lang. Bay thuong gap nhat:
+    // chep ban moi vao ma van giu ten thu muc cu. Thu muc PHAI la addons\edictbudget\.
+    if (!f) {
+        EL_LOG("[EdictBudget] !! KHONG DOC DUOC patches.txt - dung TOAN BO mac dinh !!");
+        EL_LOG("[EdictBudget] !! thu muc phai la addons\\edictbudget\\ (khong phai ten cu) !!");
+        return;
+    }
 
     char line[128];
     while (fgets(line, sizeof(line), f)) {
